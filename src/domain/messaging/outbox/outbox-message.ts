@@ -1,3 +1,4 @@
+import { calculateExponentialBackoffDelay } from "src/domain/shared/retry/exponential-backoff";
 import { IntegrationEvent } from "../events/integration-event";
 import { OutboxMessageState } from "./outbox-message.types";
 
@@ -69,15 +70,9 @@ export class OutboxMessage {
    * Schedules the next publication attempt using exponential backoff.
    */
   scheduleRetry(now: Date): void {
-    this._attempts += 1;
+    this._attempts++;
 
-    const baseDelayMs = 1000;
-    const maxDelayMs = 5 * 60 * 1000;
-
-    const delayMs = Math.min(
-      baseDelayMs * 2 ** (this.attempts - 1),
-      maxDelayMs,
-    );
+    const delayMs = calculateExponentialBackoffDelay(this._attempts);
 
     this._nextAttemptAt = new Date(now.getTime() + delayMs);
   }

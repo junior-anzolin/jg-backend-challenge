@@ -1,3 +1,4 @@
+import { calculateExponentialBackoffDelay } from "src/domain/shared/retry/exponential-backoff";
 import { Money } from "../../shared/money/money";
 import { LedgerDirection } from "../ledger/ledger-direction";
 import { FailureCode } from "./failure-code";
@@ -36,6 +37,8 @@ export class WagerTransaction {
     private _failureCode?: FailureCode,
     private _processedAt?: Date,
     private _resultingBalance?: Money,
+    private _referenceAttempts = 0,
+    private _nextReferenceAttemptAt?: Date,
   ) {}
 
   /** Nasce em PENDING. Valida a exigência de referência por kind. */
@@ -90,6 +93,8 @@ export class WagerTransaction {
       state.failureCode,
       state.processedAt,
       state.resultingBalance,
+      state.referenceAttempts,
+      state.nextReferenceAttemptAt,
     );
   }
 
@@ -103,6 +108,14 @@ export class WagerTransaction {
 
   get referenceTransactionId(): string | undefined {
     return this._referenceTransactionId;
+  }
+
+  get referenceAttempts(): number {
+    return this._referenceAttempts;
+  }
+
+  get nextReferenceAttemptAt(): Date | undefined {
+    return this._nextReferenceAttemptAt;
   }
 
   get failureCode(): FailureCode | undefined {
@@ -233,5 +246,23 @@ export class WagerTransaction {
           "LOSS does not produce a ledger entry",
         );
     }
+  }
+
+  /**
+   * Schedules a reference-resolution retry using exponential backoff.
+   * The delay starts at 1 second, doubles per attempt, and is capped at 5 minutes.
+   */
+  scheduleReferenceRetry(now: Date): void {
+    if (this._status !== WagerTransactionStatus.PendingReference) {
+      throw new InvalidWagerTransactionError(
+        "Reference retry can only be scheduled for PENDING_REFERENCE transactions",
+      );
+    }
+
+    this._referenceAttempts++;
+
+    const delayMs = calculateExponentialBackoffDelay(this._referenceAttempts);
+
+    this._nextReferenceAttemptAt = new Date(now.getTime() + delayMs);
   }
 }
