@@ -21,6 +21,7 @@ export interface CreateWagerTransactionProps {
 export interface WagerTransactionState extends CreateWagerTransactionProps {
   createdAt: Date;
   status: WagerTransactionStatus;
+  resultingBalance?: Money;
   referenceTransactionId?: string;
   failureCode?: FailureCode;
   processedAt?: Date;

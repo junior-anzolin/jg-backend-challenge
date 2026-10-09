@@ -35,6 +35,7 @@ export class WagerTransaction {
     private _referenceTransactionId?: string,
     private _failureCode?: FailureCode,
     private _processedAt?: Date,
+    private _resultingBalance?: Money,
   ) {}
 
   /** Nasce em PENDING. Valida a exigência de referência por kind. */
@@ -88,23 +89,35 @@ export class WagerTransaction {
       state.referenceTransactionId,
       state.failureCode,
       state.processedAt,
+      state.resultingBalance,
     );
   }
 
   get status(): WagerTransactionStatus {
     return this._status;
   }
+
+  get resultingBalance(): Money | undefined {
+    return this._resultingBalance;
+  }
+
   get referenceTransactionId(): string | undefined {
     return this._referenceTransactionId;
   }
+
   get failureCode(): FailureCode | undefined {
     return this._failureCode;
   }
+
   get processedAt(): Date | undefined {
     return this._processedAt;
   }
 
-  markProcessed(referenceTransactionId: string | undefined, at: Date): void {
+  markProcessed(
+    referenceTransactionId: string | undefined,
+    resultingBalance: Money,
+    at: Date,
+  ): void {
     if (this.isTerminal()) throw new InvalidTransactionStateError(this.status);
 
     if (this.requiresReference() && !referenceTransactionId?.trim())
@@ -112,7 +125,14 @@ export class WagerTransaction {
         `${this.kind} requires a resolved reference transaction`,
       );
 
+    if (resultingBalance.currency !== this.money.currency) {
+      throw new InvalidWagerTransactionError(
+        "Resulting balance currency must match transaction currency",
+      );
+    }
+
     this._referenceTransactionId = referenceTransactionId;
+    this._resultingBalance = resultingBalance;
     this._processedAt = at;
     this._status = WagerTransactionStatus.Processed;
   }

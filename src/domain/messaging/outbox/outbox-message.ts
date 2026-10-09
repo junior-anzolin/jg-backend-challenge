@@ -1,7 +1,7 @@
 import { IntegrationEvent } from "../events/integration-event";
 import { OutboxMessageState } from "./outbox-message.types";
 
-class OutboxMessage {
+export class OutboxMessage {
   private constructor(
     public readonly id: string,
     public readonly aggregateId: string,

@@ -1,6 +1,6 @@
 import { InboxMessageState, ReceiveInboxProps } from "./inbox-message.types";
 
-class InboxMessage {
+export class InboxMessage {
   private constructor(
     public readonly messageId: string,
     public readonly consumerName: string,
