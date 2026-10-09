@@ -1,4 +1,4 @@
-import { calculateExponentialBackoffDelay } from "src/domain/shared/retry/exponential-backoff";
+import { calculateExponentialBackoffDelay } from "../../../domain/shared/retry/exponential-backoff";
 import { IntegrationEvent } from "../events/integration-event";
 import { OutboxMessageState } from "./outbox-message.types";
 

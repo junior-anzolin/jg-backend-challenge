@@ -1,4 +1,4 @@
-import { Money } from "src/domain/shared/money/money";
+import { Money } from "../../../domain/shared/money/money";
 
 export interface OpenWalletProps {
   id: string;

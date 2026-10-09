@@ -1,4 +1,4 @@
-import { OutboxMessage } from "src/domain/messaging/outbox/outbox-message";
+import { OutboxMessage } from "../../domain/messaging/outbox/outbox-message";
 import { OutboxMessageState } from "../../domain/messaging/outbox/outbox-message.types";
 
 export interface OutboxMessageRepositoryPort {

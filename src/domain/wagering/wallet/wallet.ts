@@ -1,6 +1,6 @@
-import { DomainError } from "src/domain/shared/errors/domain.error";
-import { Money } from "src/domain/shared/money/money";
-import { CurrencyMismatchError } from "src/domain/shared/money/money.errors";
+import { DomainError } from "../../../domain/shared/errors/domain.error";
+import { Money } from "../../../domain/shared/money/money";
+import { CurrencyMismatchError } from "../../../domain/shared/money/money.errors";
 import { InsufficientBalanceError } from "./wallet.errors";
 import { OpenWalletProps, WalletState } from "./wallet.type";
 

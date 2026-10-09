@@ -1,4 +1,4 @@
-import { calculateExponentialBackoffDelay } from "src/domain/shared/retry/exponential-backoff";
+import { calculateExponentialBackoffDelay } from "../../../domain/shared/retry/exponential-backoff";
 import { Money } from "../../shared/money/money";
 import { LedgerDirection } from "../ledger/ledger-direction";
 import { FailureCode } from "./failure-code";
