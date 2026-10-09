@@ -1,5 +1,19 @@
 # Technical Challenge — Distributed Wagering Processor
 
+Implementação do desafio técnico de backend da Jungle Gaming, com foco na construção de um processador distribuído de transações financeiras para plataformas de apostas.
+
+O objetivo é desenvolver uma aplicação capaz de processar operações financeiras com segurança e consistência, mesmo diante de mensagens duplicadas, processamento concorrente, eventos fora de ordem e falhas de infraestrutura.
+
+O projeto utiliza **Bun, TypeScript, NestJS, PostgreSQL e AWS SQS**, seguindo os requisitos técnicos definidos no desafio.
+
+## Documentação
+
+As decisões de arquitetura, justificativas técnicas, trade-offs e limitações conhecidas estão documentados em [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
+Este documento também registra as escolhas realizadas durante o desenvolvimento e poderá ser atualizado conforme a implementação evoluir.
+
+---
+
 ## Bem-vindo à Jungle Gaming 🦧
 
 A **Jungle Gaming** é uma software house especializada em iGaming — desenvolvemos plataformas de cassino online com tecnologia de ponta: NestJS, Bun, TanStack, DDD e arquitetura orientada a eventos. Somos apaixonados por engenharia de software e acreditamos que grandes produtos nascem de grandes times.
@@ -67,7 +81,7 @@ A entrega é **at-least-once**. Portanto assuma que:
 ### Obrigatória
 
 | Item | Escolha |
-|---|---|
+| --- | --- |
 | Runtime / package manager / test runner | **Bun 1.x** |
 | Linguagem | **TypeScript** em modo estrito |
 | Framework | **NestJS** |
@@ -367,7 +381,7 @@ Inbox, alteração financeira, ledger e outbox participam da **mesma transação
 ## 7. Regras de negócio
 
 | Operação | Efeito no saldo | Ledger | Regra principal |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `BET` | débito | 1 entrada `DEBIT` | rejeitar se saldo insuficiente |
 | `WIN` | crédito | 1 entrada `CREDIT` | pode referenciar a `BET` da mesma rodada |
 | `LOSS` | nenhum | nenhuma | registra o resultado sem mover saldo |
@@ -596,7 +610,7 @@ Cenário que precisa funcionar:
 ### Eventos mínimos
 
 | Evento | Quando |
-|---|---|
+| --- | --- |
 | `WagerTransactionProcessed` | qualquer transação aplicada, inclusive `LOSS` |
 | `WagerTransactionRejected` | transação rejeitada por regra de negócio |
 | `WalletBalanceChanged` | **somente** quando o saldo muda |
@@ -720,7 +734,7 @@ wallet.balance == saldo reconstruído pelo ledger
 ## 14. Avaliação — 100 pontos
 
 | Área | Pontos | O que será observado |
-|---|---|---|
+| --- | --- | --- |
 | Correção financeira | 20 | `Money`, saldo, ledger, reversões, reconciliação |
 | Concorrência | 20 | lost updates, hot wallet, múltiplas instâncias, locks |
 | Idempotência | 15 | dedup persistente, replay, payload conflitante |
