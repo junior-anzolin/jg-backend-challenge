@@ -10,8 +10,8 @@ import {
 import {
   CreateWalletUseCase,
   WalletAlreadyExistsError,
-} from "../../application/wallets/create-wallet.use-case";
-import { InvalidMoneyError } from "../../domain/shared/money/money.errors";
+} from "../../../application/wallets/create-wallet.use-case";
+import { InvalidMoneyError } from "../../../domain/shared/money/money.errors";
 
 interface CreateWalletRequest {
   playerId?: unknown;
