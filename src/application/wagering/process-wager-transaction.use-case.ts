@@ -163,7 +163,7 @@ export class ProcessWagerTransactionUseCase {
           transaction,
           FailureCode.CurrencyMismatch,
           eventContext,
-          wallet.balance,
+          undefined,
         );
       }
 
@@ -206,7 +206,7 @@ export class ProcessWagerTransactionUseCase {
           return this.reject(
             context,
             transaction,
-            FailureCode.CurrencyMismatch,
+            referenceFailure,
             eventContext,
             wallet.balance,
           );
@@ -236,7 +236,7 @@ export class ProcessWagerTransactionUseCase {
             return this.reject(
               context,
               transaction,
-              FailureCode.CurrencyMismatch,
+              code,
               eventContext,
               wallet.balance,
             );
@@ -347,7 +347,7 @@ export class ProcessWagerTransactionUseCase {
     transaction: WagerTransaction,
     failureCode: FailureCode,
     eventContext: EventContext,
-    resultingBalance: Money,
+    resultingBalance: Money | undefined,
   ): Promise<ProcessWagerTransactionResult> {
     transaction.reject(failureCode, resultingBalance, new Date());
 
