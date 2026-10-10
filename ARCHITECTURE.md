@@ -252,3 +252,43 @@ Esta seção registra o desenho arquitetural pretendido; não substitui a valida
 - a publicação da Outbox pode ser retomada após falhas sem perder o evento confirmado;
 - a reconciliação compara o saldo materializado com o saldo reconstruído pelo ledger e sinaliza divergências;
 - concorrência real, redelivery, recuperação após reinicialização e execução com múltiplas instâncias são validadas por testes de integração.
+
+## 5. Estilo arquitetural e regras de dependência
+
+O projeto adota uma abordagem baseada em **Clean Architecture** e **Ports and Adapters (Arquitetura Hexagonal)**, com um modelo de domínio inspirado em **Domain-Driven Design (DDD)** e organização em **Modular Monolith**.
+
+A aplicação permanece como um único sistema implantável, organizado por módulos e responsabilidades. A separação de camadas busca manter as regras de negócio independentes dos detalhes de transporte, persistência e infraestrutura.
+
+### 5.1 Camadas e responsabilidades
+
+- **Domain:** contém entidades, value objects, invariantes e comportamentos essenciais do negócio. Exemplos incluem `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e `Money`.
+- **Application:** contém os casos de uso que coordenam as operações de negócio, como `CreateWalletUseCase` e `ProcessWagerTransactionUseCase`. Essa camada organiza as etapas da operação e utiliza contratos para acessar recursos externos.
+- **Infrastructure:** implementa os adaptadores de entrada e saída, incluindo controllers HTTP, repositórios, persistência PostgreSQL e integrações com mensageria.
+
+Controllers são responsáveis pelo contrato HTTP: recebem requisições, validam a estrutura dos dados, invocam casos de uso e convertem resultados em respostas HTTP. Não devem concentrar regras financeiras ou coordenar diretamente a persistência.
+
+Os casos de uso coordenam o fluxo da aplicação, mas não substituem o domínio. Invariantes como impedir saldo negativo, garantir compatibilidade monetária e determinar a direção de uma reversão pertencem aos conceitos de domínio responsáveis por essas regras.
+
+### 5.2 Ports and Adapters
+
+A camada de aplicação depende de contratos, ou *ports*, em vez de depender diretamente das implementações de infraestrutura.
+
+Por exemplo, `UnitOfWorkPort` define a fronteira transacional utilizada pelos casos de uso. A implementação concreta utiliza o MikroORM e o PostgreSQL para executar a operação em uma transação compartilhada.
+
+Essa abordagem permite substituir ou adaptar tecnologias de infraestrutura sem exigir que as regras centrais de negócio conheçam seus detalhes de implementação.
+
+### 5.3 Direção das dependências
+
+O fluxo de uma operação HTTP segue, conceitualmente, esta direção:
+
+`HTTP Controller → Application Use Case → Domain + Ports → Infrastructure Adapters`
+
+O adaptador HTTP não executa diretamente as regras financeiras. O caso de uso coordena a operação e utiliza o domínio para validar e realizar mudanças de estado, enquanto os ports fornecem os recursos necessários à persistência e às transações.
+
+Uma futura entrada por SQS deverá reutilizar o mesmo caso de uso, sem duplicar as regras do processamento financeiro. O adaptador de mensageria terá responsabilidades próprias de recebimento, deduplicação, confirmação e recuperação de mensagens.
+
+### 5.4 Objetivo e trade-offs
+
+A separação aumenta a quantidade de arquivos e introduz contratos explícitos entre componentes. Em contrapartida, torna mais claras as responsabilidades, reduz o acoplamento com frameworks e facilita a evolução e validação isolada das regras de negócio.
+
+A arquitetura é pragmática: utiliza os princípios de Clean Architecture, Ports and Adapters e DDD quando contribuem para a correção financeira, a consistência transacional e a testabilidade, evitando a criação de abstrações sem uma responsabilidade concreta.

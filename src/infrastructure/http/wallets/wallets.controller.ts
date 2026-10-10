@@ -3,7 +3,11 @@ import {
   Body,
   ConflictException,
   Controller,
+  Get,
   Headers,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
   Post,
 } from "@nestjs/common";
 
@@ -11,6 +15,7 @@ import {
   CreateWalletUseCase,
   WalletAlreadyExistsError,
 } from "../../../application/wallets/create-wallet.use-case";
+import { GetWalletUseCase } from "../../../application/wallets/get-wallet.use-case";
 import { InvalidMoneyError } from "../../../domain/shared/money/money.errors";
 
 interface CreateWalletRequest {
@@ -23,7 +28,10 @@ interface CreateWalletRequest {
 
 @Controller("wallets")
 export class WalletsController {
-  constructor(private readonly createWalletUseCase: CreateWalletUseCase) {}
+  constructor(
+    private readonly createWalletUseCase: CreateWalletUseCase,
+    private readonly getWalletUseCase: GetWalletUseCase,
+  ) {}
 
   @Post()
   async create(
@@ -70,5 +78,21 @@ export class WalletsController {
 
       throw error;
     }
+  }
+
+  @Get(":walletId")
+  async getById(@Param("walletId", new ParseUUIDPipe()) walletId: string) {
+    const wallet = await this.getWalletUseCase.execute(walletId);
+
+    if (!wallet) {
+      throw new NotFoundException("Wallet not found");
+    }
+
+    return {
+      id: wallet.id,
+      playerId: wallet.playerId,
+      balance: wallet.balance.toJSON(),
+      version: wallet.version,
+    };
   }
 }

@@ -79,17 +79,23 @@ export class ProcessWagerTransactionUseCase {
     input: ProcessWagerTransactionInput,
   ): Promise<ProcessWagerTransactionResult> {
     if (!input.idempotencyKey.trim()) {
-      throw new Error("Idempotency-Key is required");
+      throw new InvalidWagerTransactionInputError(
+        "Idempotency-Key is required",
+      );
     }
 
     if (input.kind === WagerTransactionKind.Opening) {
-      throw new Error("OPENING transactions are internal only");
+      throw new InvalidWagerTransactionInputError(
+        "OPENING transactions are internal only",
+      );
     }
 
     const money = Money.from(input.money);
 
     if (!money.isPositive()) {
-      throw new Error("Transaction amount must be greater than zero");
+      throw new InvalidWagerTransactionInputError(
+        "Transaction amount must be greater than zero",
+      );
     }
 
     const payloadHash = this.createPayloadHash(input, money);
@@ -128,7 +134,9 @@ export class ProcessWagerTransactionUseCase {
       }
 
       if (wallet.playerId !== input.playerId) {
-        throw new Error("Wallet does not belong to the supplied player");
+        throw new InvalidWagerTransactionInputError(
+          "Wallet does not belong to the supplied player",
+        );
       }
 
       // Recheck after acquiring the wallet lock: a concurrent operation
@@ -259,6 +267,7 @@ export class ProcessWagerTransactionUseCase {
 
         transaction.markProcessed(reference?.id, balanceAfter, new Date());
 
+        await context.wagerTransactions.save(transaction);
         await context.wallets.save(wallet);
         await context.ledgerEntries.save(entry);
 
@@ -268,11 +277,10 @@ export class ProcessWagerTransactionUseCase {
           ),
         );
       } else {
-        // LOSS records the result but does not move the wallet balance.
         transaction.markProcessed(undefined, wallet.balance, new Date());
-      }
 
-      await context.wagerTransactions.save(transaction);
+        await context.wagerTransactions.save(transaction);
+      }
 
       await context.outboxMessages.save(
         OutboxMessage.enqueue(
@@ -409,5 +417,12 @@ export class ProcessWagerTransactionUseCase {
     });
 
     return createHash("sha256").update(canonicalPayload).digest("hex");
+  }
+}
+
+export class InvalidWagerTransactionInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = InvalidWagerTransactionInputError.name;
   }
 }
