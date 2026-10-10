@@ -161,10 +161,20 @@ export class WagerTransaction {
     this._status = WagerTransactionStatus.PendingReference;
   }
 
-  reject(code: FailureCode): void {
-    if (this.isTerminal()) throw new InvalidTransactionStateError(this.status);
+  reject(code: FailureCode, resultingBalance: Money, at: Date): void {
+    if (this.isTerminal()) {
+      throw new InvalidTransactionStateError(this.status);
+    }
+
+    if (resultingBalance.currency !== this.money.currency) {
+      throw new InvalidWagerTransactionError(
+        "Resulting balance currency must match transaction currency",
+      );
+    }
 
     this._failureCode = code;
+    this._resultingBalance = resultingBalance;
+    this._processedAt = at;
     this._status = WagerTransactionStatus.Rejected;
   }
 
