@@ -7,6 +7,7 @@ import { HealthModule } from "./infrastructure/health/health.module";
 import { WageringModule } from "./infrastructure/http/wagering/wagering.module";
 import { WalletsModule } from "./infrastructure/http/wallets/wallets.module";
 import { MessagingModule } from "./infrastructure/messaging/messaging.module";
+import { ObservabilityModule } from "./infrastructure/observability/observability.module";
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -18,6 +19,7 @@ import { MessagingModule } from "./infrastructure/messaging/messaging.module";
     WalletsModule,
     WageringModule,
     MessagingModule,
+    ObservabilityModule,
   ],
 })
 export class AppModule {}

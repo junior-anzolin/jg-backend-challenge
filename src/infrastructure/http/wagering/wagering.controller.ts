@@ -26,6 +26,7 @@ import {
 import { InvalidMoneyError } from "../../../domain/shared/money/money.errors";
 import { WagerTransactionStatus } from "../../../domain/wagering/transaction/wager-transaction-status";
 import { InvalidWagerTransactionError } from "../../../domain/wagering/transaction/wager-transaction.errors";
+import { MetricsService } from "../../../infrastructure/observability/metrics.service";
 import { ProcessWagerTransactionDto } from "./dto/process-wager-transaction.dto";
 
 @Controller("wagering/transactions")
@@ -33,6 +34,7 @@ export class WageringController {
   constructor(
     private readonly processWagerTransactionUseCase: ProcessWagerTransactionUseCase,
     private readonly getWagerTransactionUseCase: GetWagerTransactionUseCase,
+    private readonly metricsService: MetricsService,
   ) {}
 
   @Post()
@@ -53,6 +55,8 @@ export class WageringController {
       );
     }
 
+    const startedAt = performance.now();
+
     try {
       const result = await this.processWagerTransactionUseCase.execute({
         ...body,
@@ -60,6 +64,12 @@ export class WageringController {
         correlationId,
         causationId,
       });
+
+      if (result.idempotentReplay) {
+        this.metricsService.recordDuplicate();
+      } else {
+        this.metricsService.recordTransactionStatus(result.status);
+      }
 
       if (result.status === WagerTransactionStatus.Rejected) {
         throw new UnprocessableEntityException(result);
@@ -98,9 +108,13 @@ export class WageringController {
       }
 
       throw error;
+    } finally {
+      this.metricsService.observeProcessingDuration(
+        performance.now() - startedAt,
+      );
     }
   }
-  
+
   @Get(":transactionId")
   async getById(
     @Param("transactionId", new ParseUUIDPipe()) transactionId: string,
