@@ -148,6 +148,7 @@ export class WagerTransaction {
     this._resultingBalance = resultingBalance;
     this._processedAt = at;
     this._status = WagerTransactionStatus.Processed;
+    this._nextReferenceAttemptAt = undefined;
   }
 
   markPendingReference(): void {
@@ -161,35 +162,34 @@ export class WagerTransaction {
     this._status = WagerTransactionStatus.PendingReference;
   }
 
-reject(
-  code: FailureCode,
-  resultingBalance: Money | undefined,
-  at: Date,
-): void {
-  if (this.isTerminal()) {
-    throw new InvalidTransactionStateError(this.status);
-  }
+  reject(
+    code: FailureCode,
+    resultingBalance: Money | undefined,
+    at: Date,
+  ): void {
+    if (this.isTerminal()) {
+      throw new InvalidTransactionStateError(this.status);
+    }
 
-  if (
-    resultingBalance &&
-    resultingBalance.currency !== this.money.currency
-  ) {
-    throw new InvalidWagerTransactionError(
-      "Resulting balance currency must match transaction currency",
-    );
-  }
+    if (resultingBalance && resultingBalance.currency !== this.money.currency) {
+      throw new InvalidWagerTransactionError(
+        "Resulting balance currency must match transaction currency",
+      );
+    }
 
-  this._failureCode = code;
-  this._resultingBalance = resultingBalance;
-  this._processedAt = at;
-  this._status = WagerTransactionStatus.Rejected;
-}
+    this._failureCode = code;
+    this._resultingBalance = resultingBalance;
+    this._processedAt = at;
+    this._status = WagerTransactionStatus.Rejected;
+    this._nextReferenceAttemptAt = undefined;
+  }
 
   fail(code: FailureCode): void {
     if (this.isTerminal()) throw new InvalidTransactionStateError(this.status);
 
     this._failureCode = code;
     this._status = WagerTransactionStatus.Failed;
+    this._nextReferenceAttemptAt = undefined;
   }
 
   isTerminal(): boolean {

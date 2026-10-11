@@ -1,41 +1,71 @@
-import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/postgresql';
+import { EntityManager } from "@mikro-orm/postgresql";
+import {
+  Controller,
+  Get,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 
-@Controller('health')
+import { SqsReadinessService } from "./sqs-readiness.service";
+
+@Controller("health")
 export class HealthController {
-  constructor(private readonly em: EntityManager) {}
+  private readonly logger = new Logger(HealthController.name);
 
-  @Get('live')
+  constructor(
+    private readonly em: EntityManager,
+    private readonly sqsReadinessService: SqsReadinessService,
+  ) {}
+
+  @Get("live")
   getLive() {
     return {
-      status: 'UP',
+      status: "UP",
       timestamp: new Date().toISOString(),
     };
   }
 
-  @Get('ready')
+  @Get("ready")
   async getReady() {
-    try {
-      const isConnected = await this.em.getConnection().isConnected();
-      if (!isConnected) {
-        throw new Error('Database is not connected');
-      }
-      
-      await this.em.execute('SELECT 1');
+    let databaseReady = false;
+    let sqsReady = false;
 
-      return {
-        status: 'UP',
-        database: 'CONNECTED',
-        timestamp: new Date().toISOString(),
-      };
+    try {
+      await this.em.execute("SELECT 1");
+      databaseReady = true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        "PostgreSQL readiness check failed",
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
+    try {
+      await this.sqsReadinessService.check();
+      sqsReady = true;
+    } catch (error) {
+      this.logger.error(
+        "SQS readiness check failed",
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
+    const timestamp = new Date().toISOString();
+
+    if (!databaseReady || !sqsReady) {
       throw new ServiceUnavailableException({
-        status: 'DOWN',
-        database: 'DISCONNECTED',
-        error: message,
-        timestamp: new Date().toISOString(),
+        status: "DOWN",
+        database: databaseReady ? "CONNECTED" : "DISCONNECTED",
+        sqs: sqsReady ? "CONNECTED" : "DISCONNECTED",
+        timestamp,
       });
     }
+
+    return {
+      status: "UP",
+      database: "CONNECTED",
+      sqs: "CONNECTED",
+      timestamp,
+    };
   }
 }

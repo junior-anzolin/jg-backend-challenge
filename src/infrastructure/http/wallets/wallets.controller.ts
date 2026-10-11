@@ -5,17 +5,22 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
 } from "@nestjs/common";
 
 import {
   CreateWalletUseCase,
   WalletAlreadyExistsError,
 } from "../../../application/wallets/create-wallet.use-case";
+import { GetWalletLedgerUseCase } from "../../../application/wallets/get-wallet-ledger.use-case";
 import { GetWalletUseCase } from "../../../application/wallets/get-wallet.use-case";
+import { ReconcileWalletUseCase } from "../../../application/wallets/reconcile-wallet.use-case";
 import { InvalidMoneyError } from "../../../domain/shared/money/money.errors";
 
 interface CreateWalletRequest {
@@ -31,6 +36,8 @@ export class WalletsController {
   constructor(
     private readonly createWalletUseCase: CreateWalletUseCase,
     private readonly getWalletUseCase: GetWalletUseCase,
+    private readonly getWalletLedgerUseCase: GetWalletLedgerUseCase,
+    private readonly reconcileWalletUseCase: ReconcileWalletUseCase,
   ) {}
 
   @Post()
@@ -94,5 +101,73 @@ export class WalletsController {
       balance: wallet.balance.toJSON(),
       version: wallet.version,
     };
+  }
+
+  @Get(":walletId/ledger")
+  async getLedger(
+    @Param("walletId", new ParseUUIDPipe()) walletId: string,
+    @Query("cursor") cursor?: string,
+    @Query("limit") limitRaw?: string,
+  ) {
+    const limit = limitRaw === undefined ? 50 : Number(limitRaw);
+
+    if (
+      (limitRaw !== undefined && !/^\d+$/.test(limitRaw)) ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 100
+    ) {
+      throw new BadRequestException(
+        "limit must be an integer between 1 and 100",
+      );
+    }
+
+    if (cursor !== undefined && !cursor.trim()) {
+      throw new BadRequestException("cursor cannot be empty");
+    }
+
+    try {
+      const page = await this.getWalletLedgerUseCase.execute(walletId, {
+        ...(cursor !== undefined ? { cursor } : {}),
+        limit,
+      });
+
+      if (!page) {
+        throw new NotFoundException("Wallet not found");
+      }
+
+      return {
+        walletId,
+        items: page.items.map((entry) => ({
+          id: entry.id,
+          walletId: entry.walletId,
+          transactionId: entry.transactionId,
+          direction: entry.direction,
+          money: entry.money.toJSON(),
+          balanceBefore: entry.balanceBefore.toJSON(),
+          balanceAfter: entry.balanceAfter.toJSON(),
+          createdAt: entry.createdAt.toISOString(),
+        })),
+        nextCursor: page.nextCursor ?? null,
+      };
+    } catch (error) {
+      if (error instanceof RangeError) {
+        throw new BadRequestException(error.message);
+      }
+
+      throw error;
+    }
+  }
+
+  @Post(":walletId/reconciliation")
+  @HttpCode(HttpStatus.OK)
+  async reconcile(@Param("walletId", new ParseUUIDPipe()) walletId: string) {
+    const result = await this.reconcileWalletUseCase.execute(walletId);
+
+    if (!result) {
+      throw new NotFoundException("Wallet not found");
+    }
+
+    return result;
   }
 }

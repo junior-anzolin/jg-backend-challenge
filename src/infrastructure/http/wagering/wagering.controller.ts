@@ -3,15 +3,19 @@ import {
   Body,
   ConflictException,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpException,
   HttpStatus,
   NotFoundException,
+  Param,
+  ParseUUIDPipe,
   Post,
   UnprocessableEntityException,
 } from "@nestjs/common";
 
+import { GetWagerTransactionUseCase } from "../../../application/wagering/get-wager-transaction.use-case";
 import {
   IdempotencyConflictError,
   InvalidWagerTransactionInputError,
@@ -28,6 +32,7 @@ import { ProcessWagerTransactionDto } from "./dto/process-wager-transaction.dto"
 export class WageringController {
   constructor(
     private readonly processWagerTransactionUseCase: ProcessWagerTransactionUseCase,
+    private readonly getWagerTransactionUseCase: GetWagerTransactionUseCase,
   ) {}
 
   @Post()
@@ -94,5 +99,19 @@ export class WageringController {
 
       throw error;
     }
+  }
+  
+  @Get(":transactionId")
+  async getById(
+    @Param("transactionId", new ParseUUIDPipe()) transactionId: string,
+  ) {
+    const transaction =
+      await this.getWagerTransactionUseCase.executeById(transactionId);
+
+    if (!transaction) {
+      throw new NotFoundException("Wager transaction not found");
+    }
+
+    return transaction;
   }
 }
