@@ -47,4 +47,15 @@ aws --endpoint-url "$ENDPOINT" sqs create-queue \
   --attributes "file://$WORKDIR/queue-attributes.json" \
   >/dev/null
 
+  cat > "$WORKDIR/events-attributes.json" <<'JSON'
+{
+  "FifoQueue": "true"
+}
+JSON
+
+aws --endpoint-url "$ENDPOINT" sqs create-queue \
+  --queue-name "wager-events.fifo" \
+  --attributes "file://$WORKDIR/events-attributes.json" \
+  >/dev/null
+
 echo "SQS queues initialized successfully."

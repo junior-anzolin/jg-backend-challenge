@@ -21,7 +21,6 @@ import { UnitOfWork } from "./unit-of-work";
         user: configService.get<string>("database.user"),
         password: configService.get<string>("database.password"),
         entities: ["dist/**/*.entity.js"],
-        entitiesTs: ["src/**/*.entity.ts"],
         extensions: [Migrator],
         discovery: {
           warnWhenNoEntities: false,

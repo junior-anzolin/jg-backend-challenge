@@ -14,6 +14,132 @@ Este documento também registra as escolhas realizadas durante o desenvolvimento
 
 ---
 
+## Executando o projeto localmente
+
+O projeto utiliza Bun, NestJS, PostgreSQL e MiniStack para emular o SQS. O Docker Compose foi separado em uma composição base de infraestrutura e duas composições da API: desenvolvimento (com hot reload) e produção local (executando a aplicação compilada).
+
+> **Importante:** o perfil `prod` deste repositório serve para validar a imagem de produção localmente. Ele ainda utiliza o PostgreSQL e o MiniStack locais, além de credenciais AWS de teste. Isso não representa uma implantação real em produção.
+
+### Pré-requisitos
+
+- [Bun](https://bun.sh/) instalado.
+- Docker Desktop ou Docker Engine com Docker Compose v2.
+
+### Preparação inicial
+
+Na raiz do repositório, instale as dependências e crie o arquivo local de ambiente:
+
+```bash
+bun install
+cp .env.example .env
+```
+
+Confira se o `.env` contém os parâmetros de conexão usados pela CLI das migrations. Como os comandos de migration são executados na máquina host, o host do banco normalmente deve ser `localhost`:
+
+```dotenv
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=wagering_db
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
+```
+
+Não versione o arquivo `.env`. Dentro dos containers da API, o Compose configura `DATABASE_HOST=postgres`, pois o serviço precisa usar o nome do serviço PostgreSQL na rede Docker.
+
+### Desenvolvimento (hot reload)
+
+1. Suba a infraestrutura — PostgreSQL e MiniStack/SQS:
+
+   ```bash
+   bun run docker:infra:up
+   ```
+
+2. Aguarde os serviços ficarem saudáveis. Confira com:
+
+   ```bash
+   docker compose ps
+   ```
+
+3. Aplique as migrations pendentes:
+
+   ```bash
+   bun run migration:up
+   ```
+
+4. Inicie a API em modo de desenvolvimento:
+
+   ```bash
+   bun run docker:dev
+   ```
+
+Esse comando mantém os logs no terminal e habilita o hot reload. Para executar em segundo plano e acompanhar os logs separadamente:
+
+```bash
+bun run docker:dev:up
+bun run docker:dev:logs
+```
+
+Para parar o ambiente de desenvolvimento:
+
+```bash
+bun run docker:dev:down
+```
+
+### Produção local (imagem compilada)
+
+Aplique as migrations antes de iniciar a API, garantindo que a infraestrutura esteja em execução:
+
+```bash
+bun run docker:infra:up
+bun run migration:up
+bun run docker:prod
+```
+
+O comando `docker:prod` constrói a imagem de release e inicia os serviços em segundo plano. Para acompanhar os logs ou parar o ambiente:
+
+```bash
+bun run docker:prod:logs
+bun run docker:prod:down
+```
+
+A CLI de migrations é executada na máquina host e precisa das dependências instaladas (`bun install`). Execute-a com o `.env` configurado para acessar o PostgreSQL pela porta publicada no host.
+
+### Migrations
+
+Os comandos disponíveis são:
+
+```bash
+bun run migration:status  # lista migrations pendentes
+bun run migration:up      # aplica migrations pendentes
+bun run migration:down    # reverte a última migration, conforme o arquivo de migration
+```
+
+Use `migration:down` conscientemente: uma migration reversível pode remover estruturas ou dados criados por ela.
+
+### URLs locais
+
+- API: <http://localhost:3000>
+- Liveness: <http://localhost:3000/health/live>
+- Readiness: <http://localhost:3000/health/ready>
+- Endpoint do MiniStack/SQS: <http://localhost:4566>
+
+### Alternando entre ambientes
+
+Não mantenha os perfis `dev` e `prod` ativos simultaneamente: ambos publicam a API na porta `3000` e compartilham PostgreSQL/MiniStack.
+
+Pare o ambiente atualmente ativo antes de iniciar o outro. Os comandos `docker:dev:down` e `docker:prod:down` preservam os volumes nomeados. **Não use `docker compose down -v`**, a menos que queira excluir os dados persistidos do PostgreSQL e do MiniStack.
+
+### Comandos úteis
+
+```bash
+docker compose ps                         # estado da infraestrutura base
+docker compose logs -f postgres ministack # logs da infraestrutura
+bun run build                             # compila a aplicação
+bun run test                              # executa os testes configurados no Bun
+```
+
+---
+
 ## Bem-vindo à Jungle Gaming 🦧
 
 A **Jungle Gaming** é uma software house especializada em iGaming — desenvolvemos plataformas de cassino online com tecnologia de ponta: NestJS, Bun, TanStack, DDD e arquitetura orientada a eventos. Somos apaixonados por engenharia de software e acreditamos que grandes produtos nascem de grandes times.
