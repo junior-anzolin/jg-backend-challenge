@@ -38,19 +38,34 @@ export class OutboxMessageRepository implements OutboxMessageRepositoryPort {
     );
   }
 
-  async findDueForPublishing(
+  async claimDueForPublishing(
     now: Date,
     limit: number,
+    claimToken: string,
+    claimUntil: Date,
   ): Promise<OutboxMessageState[]> {
     if (!Number.isInteger(limit) || limit <= 0) {
       throw new RangeError("Outbox batch limit must be a positive integer");
+    }
+
+    if (!claimToken.trim() || claimUntil <= now) {
+      throw new RangeError(
+        "A valid claim token and future expiration are required",
+      );
     }
 
     const entities = await this.em.find(
       OutboxMessageEntity,
       {
         publishedAt: null,
-        $or: [{ nextAttemptAt: { $lte: now } }, { nextAttemptAt: null }],
+        $and: [
+          {
+            $or: [{ nextAttemptAt: null }, { nextAttemptAt: { $lte: now } }],
+          },
+          {
+            $or: [{ claimUntil: null }, { claimUntil: { $lte: now } }],
+          },
+        ],
       },
       {
         orderBy: {
@@ -62,7 +77,64 @@ export class OutboxMessageRepository implements OutboxMessageRepositoryPort {
       },
     );
 
+    for (const entity of entities) {
+      this.em.assign(entity, {
+        claimToken,
+        claimUntil,
+      });
+    }
+
     return entities.map((entity) => this.toState(entity));
+  }
+
+  async markPublished(
+    messageId: string,
+    claimToken: string,
+    publishedAt: Date,
+  ): Promise<boolean> {
+    const affected = await this.em.nativeUpdate(
+      OutboxMessageEntity,
+      {
+        id: messageId,
+        claimToken,
+        publishedAt: null,
+      },
+      {
+        publishedAt,
+        claimToken: null,
+        claimUntil: null,
+      },
+    );
+
+    return affected === 1;
+  }
+
+  async rescheduleClaimed(
+    messageId: string,
+    claimToken: string,
+    attempts: number,
+    nextAttemptAt: Date,
+  ): Promise<boolean> {
+    if (!Number.isInteger(attempts) || attempts < 1) {
+      throw new RangeError("Attempts must be a positive integer");
+    }
+
+    const affected = await this.em.nativeUpdate(
+      OutboxMessageEntity,
+      {
+        id: messageId,
+        claimToken,
+        publishedAt: null,
+      },
+      {
+        attempts,
+        nextAttemptAt,
+        claimToken: null,
+        claimUntil: null,
+      },
+    );
+
+    return affected === 1;
   }
 
   private toState(entity: OutboxMessageEntity): OutboxMessageState {

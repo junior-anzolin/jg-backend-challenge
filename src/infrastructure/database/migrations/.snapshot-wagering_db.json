@@ -235,6 +235,38 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
+        },
+        "claim_token": {
+          "name": "claim_token",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "claim_until": {
+          "name": "claim_until",
+          "type": "timestamptz",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
         }
       },
       "name": "outbox_messages",
@@ -261,6 +293,11 @@
         }
       ],
       "checks": [
+        {
+          "name": "outbox_messages_claim_lease_consistent",
+          "expression": "(claim_token IS NULL) = (claim_until IS NULL)",
+          "definition": "check (((claim_token IS NULL) = (claim_until IS NULL)))"
+        },
         {
           "name": "outbox_messages_attempts_non_negative",
           "expression": "attempts >= 0",

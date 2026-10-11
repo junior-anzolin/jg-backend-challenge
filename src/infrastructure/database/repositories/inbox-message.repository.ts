@@ -1,6 +1,9 @@
 import { EntityManager } from "@mikro-orm/postgresql";
 
-import { InboxMessageRepositoryPort } from "../../../application/ports/inbox-message.repository.port";
+import {
+  InboxMessagePayloadConflictError,
+  InboxMessageRepositoryPort,
+} from "../../../application/ports/inbox-message.repository.port";
 import { InboxMessage } from "../../../domain/messaging/inbox/inbox-message";
 import { InboxMessageEntity } from "../entities/inbox-message.entity";
 
@@ -26,6 +29,10 @@ export class InboxMessageRepository implements InboxMessageRepositoryPort {
     });
 
     if (existing) {
+      if (existing.payloadHash !== message.payloadHash) {
+        throw new InboxMessagePayloadConflictError(message.messageId);
+      }
+
       if (message.processedAt) {
         existing.processedAt = message.processedAt;
       }
@@ -33,15 +40,15 @@ export class InboxMessageRepository implements InboxMessageRepositoryPort {
       return;
     }
 
-    this.em.persist(
-      this.em.create(InboxMessageEntity, {
-        consumerName: message.consumerName,
-        messageId: message.messageId,
-        payloadHash: message.payloadHash,
-        receivedAt: message.receivedAt,
-        processedAt: message.processedAt,
-      }),
-    );
+    const entity = this.em.create(InboxMessageEntity, {
+      consumerName: message.consumerName,
+      messageId: message.messageId,
+      payloadHash: message.payloadHash,
+      receivedAt: message.receivedAt,
+      processedAt: message.processedAt,
+    });
+
+    await this.em.persist(entity).flush();
   }
 
   private toDomain(entity: InboxMessageEntity): InboxMessage {

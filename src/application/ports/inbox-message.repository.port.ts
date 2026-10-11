@@ -8,3 +8,10 @@ export interface InboxMessageRepositoryPort {
 
   save(message: InboxMessage): Promise<void>;
 }
+
+export class InboxMessagePayloadConflictError extends Error {
+  constructor(messageId: string) {
+    super(`Inbox message "${messageId}" was reused with a different payload`);
+    this.name = InboxMessagePayloadConflictError.name;
+  }
+}

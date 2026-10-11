@@ -5,6 +5,10 @@ import { Check, Entity, Index, PrimaryKey, Property } from "@mikro-orm/core";
   name: "outbox_messages_attempts_non_negative",
   expression: "attempts >= 0",
 })
+@Check({
+  name: "outbox_messages_claim_lease_consistent",
+  expression: "(claim_token IS NULL) = (claim_until IS NULL)",
+})
 @Index({
   name: "outbox_messages_pending_idx",
   expression:
@@ -50,4 +54,18 @@ export class OutboxMessageEntity {
     nullable: true,
   })
   publishedAt?: Date;
+
+  @Property({
+    fieldName: "claim_token",
+    type: "uuid",
+    nullable: true,
+  })
+  claimToken?: string;
+
+  @Property({
+    fieldName: "claim_until",
+    columnType: "timestamptz",
+    nullable: true,
+  })
+  claimUntil?: Date;
 }
