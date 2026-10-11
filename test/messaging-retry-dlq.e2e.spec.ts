@@ -118,8 +118,6 @@ async function startApplication(): Promise<RunningApplication> {
   const moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
   })
-    // Keep the real HTTP API, PostgreSQL repositories and SQS consumer.
-    // Disable unrelated workers so this test controls only message retries.
     .overrideProvider(OutboxPublisherWorker)
     .useValue({})
     .overrideProvider(PendingReferenceRetryWorker)
@@ -140,8 +138,6 @@ async function startApplication(): Promise<RunningApplication> {
           execute: async (message: WagerTransactionRequestedMessage) => {
             processingAttempts++;
 
-            // Inject exactly one transient failure before entering the real
-            // database transaction. The next delivery uses the real use case.
             if (!injectedTransientFailure) {
               injectedTransientFailure = true;
               throw new Error("Injected transient processing failure");

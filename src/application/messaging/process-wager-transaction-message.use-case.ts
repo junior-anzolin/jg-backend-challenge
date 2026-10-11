@@ -60,7 +60,6 @@ export class ProcessWagerTransactionMessageUseCase {
           payloadHash,
         });
 
-        // Persist within this transaction before processing the wager.
         await context.inboxMessages.save(inbox);
       }
 

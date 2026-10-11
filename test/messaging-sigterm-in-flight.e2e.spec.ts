@@ -159,8 +159,6 @@ async function startApplication(): Promise<RunningApplication> {
   const moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
   })
-    // Keep the real consumer, PostgreSQL repositories and business use cases.
-    // Disable unrelated workers to isolate the lifecycle under test.
     .overrideProvider(OutboxPublisherWorker)
     .useValue({})
     .overrideProvider(PendingReferenceRetryWorker)
@@ -181,8 +179,6 @@ async function startApplication(): Promise<RunningApplication> {
           execute: async (message: WagerTransactionRequestedMessage) => {
             processingInvocationCount++;
 
-            // Commit the real Inbox, transaction, wallet, ledger and Outbox
-            // changes before pausing the consumer, but before it can ack SQS.
             const result = await realUseCase.execute(message);
 
             messageCommittedBeforeAck = true;
@@ -427,7 +423,6 @@ describe("SQS in-flight graceful shutdown E2E", () => {
   });
 
   afterAll(async () => {
-    // Prevent a failed assertion from leaving the controlled consumer blocked.
     allowAcknowledgement.resolve(undefined);
 
     try {
@@ -541,8 +536,6 @@ describe("SQS in-flight graceful shutdown E2E", () => {
 
     await expectWalletBalanceMatchesLedger(wallet.id, "75.00");
 
-    // The real use case has committed, but the wrapper has not returned,
-    // so the SQS consumer cannot acknowledge the message yet.
     await waitUntil(
       async () => (await getQueueCounts()).inFlight > 0,
       "the message to remain in flight before shutdown",
@@ -555,7 +548,6 @@ describe("SQS in-flight graceful shutdown E2E", () => {
       closeFinished = true;
     });
 
-    // Shutdown must wait for the in-flight handler instead of abandoning it.
     await new Promise((resolve) => setTimeout(resolve, 100));
     const shutdownWaitedForInFlightMessage = !closeFinished;
 
@@ -567,7 +559,6 @@ describe("SQS in-flight graceful shutdown E2E", () => {
 
     runningApplication = undefined;
 
-    // Successful graceful shutdown includes the SQS acknowledgement.
     await waitForQueueToDrain();
 
     const finalCounts = await getQueueCounts();

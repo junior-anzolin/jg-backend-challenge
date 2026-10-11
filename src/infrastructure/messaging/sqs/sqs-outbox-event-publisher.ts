@@ -72,7 +72,6 @@ export class SqsOutboxEventPublisher
           return QueueUrl;
         })
         .catch((error: unknown) => {
-          // Allow a future attempt if SQS is temporarily unavailable.
           this.queueUrlPromise = undefined;
           throw error;
         });

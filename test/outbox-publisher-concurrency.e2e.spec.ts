@@ -4,8 +4,8 @@ import { Test } from "@nestjs/testing";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { randomUUID } from "node:crypto";
 
-import { PublishOutboxMessagesUseCase } from "../src/application/messaging/publish-outbox-messages.use-case";
 import { AppModule } from "../src/app.module";
+import { PublishOutboxMessagesUseCase } from "../src/application/messaging/publish-outbox-messages.use-case";
 import { OutboxPublisherWorker } from "../src/infrastructure/messaging/outbox-publisher.worker";
 import { PendingReferenceRetryWorker } from "../src/infrastructure/messaging/pending-reference-retry.worker";
 import { SqsWagerTransactionConsumer } from "../src/infrastructure/messaging/sqs/sqs-wager-transaction.consumer";
@@ -78,8 +78,6 @@ async function startApplication(): Promise<RunningApplication> {
   const moduleFixture = await Test.createTestingModule({
     imports: [AppModule],
   })
-    // Disable automatic polling so the test controls when each publisher runs.
-    // The database and actual SQS publisher remain real.
     .overrideProvider(OutboxPublisherWorker)
     .useValue({})
     .overrideProvider(SqsWagerTransactionConsumer)
@@ -105,10 +103,7 @@ async function startApplication(): Promise<RunningApplication> {
   }
 }
 
-async function query<T>(
-  sql: string,
-  params: unknown[] = [],
-): Promise<T[]> {
+async function query<T>(sql: string, params: unknown[] = []): Promise<T[]> {
   if (applications.length === 0) {
     throw new Error("E2E applications have not been initialized");
   }
@@ -141,22 +136,19 @@ async function createWallet(runId: string): Promise<WalletResponse> {
     throw new Error("E2E applications have not been initialized");
   }
 
-  const response = await fetch(
-    `${applications[0].serverUrl}/wallets`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        playerId: `e2e-player-${runId}`,
-        initialBalance: {
-          amount: INITIAL_BALANCE,
-          currency: "BRL",
-        },
-      }),
+  const response = await fetch(`${applications[0].serverUrl}/wallets`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      playerId: `e2e-player-${runId}`,
+      initialBalance: {
+        amount: INITIAL_BALANCE,
+        currency: "BRL",
+      },
+    }),
+  });
 
   expect(response.status).toBe(201);
 
@@ -207,9 +199,7 @@ async function submitBet(
   return (await response.json()) as WagerResponse;
 }
 
-async function findOutboxEvents(
-  transactionId: string,
-): Promise<OutboxRow[]> {
+async function findOutboxEvents(transactionId: string): Promise<OutboxRow[]> {
   return query<OutboxRow>(
     `SELECT id,
             event_type,
@@ -264,7 +254,6 @@ describe("Outbox publisher concurrency E2E", () => {
       previousEnvironment.set(key, process.env[key]);
     }
 
-    // Ensure all publishers use the local MiniStack, never real AWS.
     process.env.SQS_ENDPOINT = SQS_ENDPOINT;
     process.env.AWS_REGION = "us-east-1";
     process.env.AWS_ACCESS_KEY_ID = "test";
@@ -275,9 +264,7 @@ describe("Outbox publisher concurrency E2E", () => {
       applications.push(await startApplication());
       applications.push(await startApplication());
     } catch (error) {
-      await Promise.all(
-        applications.map(({ app }) => app.close()),
-      );
+      await Promise.all(applications.map(({ app }) => app.close()));
       applications = [];
       throw error;
     }
@@ -285,9 +272,7 @@ describe("Outbox publisher concurrency E2E", () => {
 
   afterAll(async () => {
     try {
-      await Promise.all(
-        applications.map(({ app }) => app.close()),
-      );
+      await Promise.all(applications.map(({ app }) => app.close()));
     } finally {
       applications = [];
 
@@ -305,9 +290,9 @@ describe("Outbox publisher concurrency E2E", () => {
 
   it("publishes each transaction event when two publishers run concurrently", async () => {
     expect(applications).toHaveLength(2);
-    expect(
-      new Set(applications.map(({ serverUrl }) => serverUrl)).size,
-    ).toBe(2);
+    expect(new Set(applications.map(({ serverUrl }) => serverUrl)).size).toBe(
+      2,
+    );
 
     const runId = randomUUID();
     const wallet = await createWallet(runId);
@@ -319,20 +304,14 @@ describe("Outbox publisher concurrency E2E", () => {
       currency: "BRL",
     });
 
-    const initialEvents = await findOutboxEvents(
-      betResult.transactionId,
-    );
+    const initialEvents = await findOutboxEvents(betResult.transactionId);
 
     expect(initialEvents).toHaveLength(2);
-    expect(
-      initialEvents.map((event) => event.event_type).sort(),
-    ).toEqual([
+    expect(initialEvents.map((event) => event.event_type).sort()).toEqual([
       "WagerTransactionProcessed",
       "WalletBalanceChanged",
     ]);
 
-    // Both independent application instances compete to claim due events
-    // from the same PostgreSQL outbox.
     const results = await Promise.all(
       applications.map(({ publishOutboxMessages }) =>
         publishOutboxMessages.execute(PUBLISH_BATCH_SIZE),
@@ -341,54 +320,38 @@ describe("Outbox publisher concurrency E2E", () => {
 
     expect(results).toHaveLength(2);
 
-    // Publication completion means SQS confirmed each send and the publisher
-    // persisted its publication state, unless another concurrent publisher
-    // has already completed that work.
-    await waitUntil(
-      async () => {
-        const rows = await findOutboxEvents(
-          betResult.transactionId,
-        );
+    await waitUntil(async () => {
+      const rows = await findOutboxEvents(betResult.transactionId);
 
-        return (
-          rows.length === 2 &&
-          rows.every(
-            (event) =>
-              event.published_at !== null &&
-              event.claim_token === null &&
-              event.claim_until === null,
-          )
-        );
-      },
-      "both transaction events to be published and their claims released",
-    );
+      return (
+        rows.length === 2 &&
+        rows.every(
+          (event) =>
+            event.published_at !== null &&
+            event.claim_token === null &&
+            event.claim_until === null,
+        )
+      );
+    }, "both transaction events to be published and their claims released");
 
-    const finalEvents = await findOutboxEvents(
-      betResult.transactionId,
-    );
+    const finalEvents = await findOutboxEvents(betResult.transactionId);
 
     expect(finalEvents).toHaveLength(2);
-    expect(
-      finalEvents.map((event) => event.event_type).sort(),
-    ).toEqual([
+    expect(finalEvents.map((event) => event.event_type).sort()).toEqual([
       "WagerTransactionProcessed",
       "WalletBalanceChanged",
     ]);
 
-    expect(
-      finalEvents.every((event) => event.published_at !== null),
-    ).toBe(true);
+    expect(finalEvents.every((event) => event.published_at !== null)).toBe(
+      true,
+    );
 
     expect(
       finalEvents.every(
-        (event) =>
-          event.claim_token === null &&
-          event.claim_until === null,
+        (event) => event.claim_token === null && event.claim_until === null,
       ),
     ).toBe(true);
 
-    // There must be exactly one Outbox record of each required event type
-    // for this processed BET, regardless of publisher scheduling.
     const eventCounts = await query<CountRow>(
       `SELECT COUNT(*)::text AS count
          FROM outbox_messages

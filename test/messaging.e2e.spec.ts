@@ -169,8 +169,6 @@ async function sendDuplicateDeliveries(
 
   const body = JSON.stringify(message);
 
-  // Identical application messages use different SQS deduplication IDs.
-  // This ensures both deliveries reach the queue.
   await Promise.all(
     ["first", "second"].map((delivery) =>
       sqs!.send(
@@ -286,7 +284,6 @@ async function expectWalletBalanceMatchesLedger(
 
 describe("SQS messaging E2E", () => {
   beforeAll(async () => {
-    // These tests always target the local MiniStack, never real AWS.
     process.env.SQS_ENDPOINT = SQS_ENDPOINT;
     process.env.AWS_REGION = "us-east-1";
     process.env.AWS_ACCESS_KEY_ID = "test";
@@ -404,14 +401,12 @@ describe("SQS messaging E2E", () => {
       [transactions[0].id],
     );
 
-    // LOSS records the operation, but does not move money.
     expect(Number(ledgerRows[0].count)).toBe(0);
 
     expect(await countOutboxEvents("WagerTransactionProcessed")).toBe(
       processedEventsBefore + 1,
     );
 
-    // LOSS must not emit a balance-changed event.
     expect(await countOutboxEvents("WalletBalanceChanged")).toBe(
       balanceEventsBefore,
     );

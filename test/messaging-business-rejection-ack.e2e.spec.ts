@@ -122,8 +122,6 @@ async function startApplication(): Promise<RunningApplication> {
   const moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
   })
-    // Use the real consumer, database repositories and business use cases.
-    // Disable unrelated workers so they cannot publish or retry outbox work.
     .overrideProvider(OutboxPublisherWorker)
     .useValue({})
     .overrideProvider(PendingReferenceRetryWorker)
@@ -515,7 +513,6 @@ describe("SQS business rejection acknowledgement E2E", () => {
 
     await expectWalletBalanceMatchesLedger(wallet.id, INITIAL_BALANCE);
 
-    // A terminal business rejection is acknowledged, not repeatedly retried.
     await waitForQueueToDrain(
       sourceQueueUrl,
       "the rejected message to be acknowledged",

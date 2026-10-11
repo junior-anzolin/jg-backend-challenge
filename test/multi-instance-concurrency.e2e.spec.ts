@@ -312,7 +312,6 @@ describe("Multi-instance concurrency E2E", () => {
       new Set(submissions.map((submission) => submission.serverUrl)).size,
     ).toBe(INSTANCE_COUNT);
 
-    // Send a different bet through each independently running app instance.
     const responses = await Promise.all(
       submissions.map(({ serverUrl, payload, idempotencyKey }) =>
         submitBet(serverUrl, payload, idempotencyKey),

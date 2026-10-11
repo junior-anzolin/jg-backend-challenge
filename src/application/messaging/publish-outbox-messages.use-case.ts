@@ -39,7 +39,6 @@ export class PublishOutboxMessagesUseCase {
     const claimToken = randomUUID();
     const claimUntil = new Date(now.getTime() + CLAIM_LEASE_MS);
 
-    // Claim and persist a batch in a short SQL transaction.
     const messages = await this.unitOfWork.runInTransaction((context) =>
       context.outboxMessages.claimDueForPublishing(
         now,
@@ -60,7 +59,6 @@ export class PublishOutboxMessagesUseCase {
 
     for (const state of messages) {
       try {
-        // Network I/O happens outside the database transaction.
         await this.publisher.publish(state);
       } catch (error) {
         await this.scheduleRetry(state, claimToken, result, error);
@@ -69,7 +67,6 @@ export class PublishOutboxMessagesUseCase {
       }
 
       try {
-        // Only acknowledge publication after SQS confirms the send.
         const markedPublished = await this.unitOfWork.runInTransaction(
           (context) =>
             context.outboxMessages.markPublished(

@@ -145,15 +145,12 @@ async function startApplication(
 
         return {
           execute: async (message: WagerTransactionRequestedMessage) => {
-            // Execute the real use case. Inbox, transaction, wallet, ledger
-            // and Outbox changes are committed by the real unit of work.
             const result = await realUseCase.execute(message);
 
             if (shouldInjectCrash) {
               shouldInjectCrash = false;
               injectedCrashAfterCommit = true;
 
-              // The consumer has not yet reached DeleteMessage (SQS ack).
               throw new Error(
                 "Injected interruption after database commit and before SQS acknowledgement",
               );
@@ -366,8 +363,6 @@ describe("SQS crash before acknowledgement E2E", () => {
     const queueName = `wager-transactions-crash-${randomUUID()}.fifo`;
     process.env.SQS_WAGER_TRANSACTIONS_QUEUE_NAME = queueName;
 
-    // The Outbox worker is disabled, so this queue is only used by the
-    // transaction consumer under test.
     process.env.SQS_WAGER_EVENTS_QUEUE_NAME = `wager-events-crash-${randomUUID()}.fifo`;
 
     sqs = new SQSClient({
@@ -499,8 +494,6 @@ describe("SQS crash before acknowledgement E2E", () => {
       balance_after: "75.00",
     });
 
-    // Close the first application without acknowledging the SQS delivery.
-    // The original message remains in flight until its visibility timeout.
     const interruptedApplication = runningApplication;
     runningApplication = undefined;
 
@@ -510,9 +503,6 @@ describe("SQS crash before acknowledgement E2E", () => {
 
     expect(countsWhileWaiting.inFlight).toBe(1);
 
-    // Restart the application against the same queue. Once the original
-    // delivery becomes visible, the persistent Inbox must identify it as a
-    // duplicate and let the consumer acknowledge it without financial effects.
     runningApplication = await startApplication("observe-duplicate");
 
     await waitUntil(

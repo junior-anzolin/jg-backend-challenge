@@ -271,7 +271,6 @@ describe("Wagering concurrency E2E", () => {
     const idempotencyKey = `e2e-idempotency-${runId}`;
     const submissionCount = 50;
 
-    // All requests are issued concurrently against the real HTTP application.
     const responses = await Promise.all(
       Array.from({ length: submissionCount }, () =>
         submitBet(payload, idempotencyKey),
@@ -375,7 +374,6 @@ describe("Wagering concurrency E2E", () => {
       },
     ];
 
-    // Distinct bets compete for the same wallet at the same time.
     const responses = await Promise.all(
       submissions.map(({ payload, idempotencyKey }) =>
         submitBet(payload, idempotencyKey),

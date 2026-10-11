@@ -234,7 +234,6 @@ describe("Wallets concurrency E2E", () => {
   it("processes bets on different wallets in parallel without cross-wallet interference", async () => {
     const runId = randomUUID();
 
-    // Each wallet belongs to a different player and starts with 100.00 BRL.
     const wallets = await Promise.all(
       Array.from({ length: WALLET_COUNT }, (_, index) =>
         createWallet(runId, index),
@@ -254,7 +253,6 @@ describe("Wallets concurrency E2E", () => {
       };
     });
 
-    // Issue requests concurrently; no mocks or sequential submission loop.
     const responses = await Promise.all(
       submissions.map(({ payload, idempotencyKey }) =>
         submitBet(payload, idempotencyKey),
@@ -287,7 +285,6 @@ describe("Wallets concurrency E2E", () => {
       WALLET_COUNT,
     );
 
-    // Verify persisted transaction and ledger effects independently per wallet.
     for (const [index, submission] of submissions.entries()) {
       const { wallet, payload } = submission;
       const result = results[index];

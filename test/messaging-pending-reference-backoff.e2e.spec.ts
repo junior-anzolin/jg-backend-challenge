@@ -117,8 +117,6 @@ async function startApplication(): Promise<RunningApplication> {
   const moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
   })
-    // Keep the real scheduled reference retry worker and PostgreSQL.
-    // SQS consumption and outbox publication are unrelated to this test.
     .overrideProvider(OutboxPublisherWorker)
     .useValue({})
     .overrideProvider(SqsWagerTransactionConsumer)
@@ -345,13 +343,11 @@ describe("Pending reference exponential backoff E2E", () => {
       expect(initialResult.status).toBe("PENDING_REFERENCE");
       expect(initialResult.idempotentReplay).toBe(false);
 
-      // Attempt 1: the initial scheduling delay should be approximately 1 second.
       let rows = await findPendingReference(initialResult.transactionId);
 
       expect(rows).toHaveLength(1);
       expectScheduledDelay(rows[0], 1, 500, 1_800);
 
-      // Wait for the real scheduled worker to perform the second attempt.
       await waitUntil(async () => {
         const current = await findPendingReference(initialResult.transactionId);
 
@@ -364,10 +360,8 @@ describe("Pending reference exponential backoff E2E", () => {
 
       expect(rows).toHaveLength(1);
 
-      // Attempt 2: the following delay should be approximately 2 seconds.
       expectScheduledDelay(rows[0], 2, 1_200, 2_800);
 
-      // Wait for the real worker to perform the third attempt.
       await waitUntil(async () => {
         const current = await findPendingReference(initialResult.transactionId);
 
@@ -380,7 +374,6 @@ describe("Pending reference exponential backoff E2E", () => {
 
       expect(rows).toHaveLength(1);
 
-      // Attempt 3: the next delay should be approximately 4 seconds.
       expectScheduledDelay(rows[0], 3, 2_800, 5_000);
 
       expect(

@@ -105,8 +105,6 @@ async function startApplication(
   const builder = Test.createTestingModule({
     imports: [AppModule],
   })
-    // The test drives publication recovery explicitly. The actual SQS
-    // publisher remains available in the recovery application.
     .overrideProvider(SqsWagerTransactionConsumer)
     .useValue({})
     .overrideProvider(PendingReferenceRetryWorker)
@@ -272,7 +270,6 @@ async function receiveExpectedEvents(
       const event = JSON.parse(message.Body) as PublishedEvent;
 
       if (!expectedIds.has(event.eventId)) {
-        // Do not delete events that do not belong to this test.
         continue;
       }
 
@@ -367,9 +364,6 @@ describe("Outbox crash recovery E2E", () => {
 
       queueUrl = queue.QueueUrl;
 
-      // First application persists financial state and Outbox records, but
-      // does not run the publisher. This deterministically establishes the
-      // committed-but-unpublished state before stopping the application.
       runningApplication = await startApplication(false);
     } catch (error) {
       await runningApplication?.app.close();
@@ -436,8 +430,6 @@ describe("Outbox crash recovery E2E", () => {
 
     const pendingEventsBeforeRestart = await findWalletOutboxEvents(wallet.id);
 
-    // Wallet creation creates an OPENING transaction, and the BET creates
-    // another transaction. Both change the balance and produce two events.
     expect(pendingEventsBeforeRestart).toHaveLength(4);
 
     const initialEventTypes = pendingEventsBeforeRestart.map(
@@ -469,14 +461,11 @@ describe("Outbox crash recovery E2E", () => {
       .map((event) => event.id)
       .sort();
 
-    // Stop the original application after the financial transaction has
-    // committed, but before any Outbox event is published.
     const originalApplication = runningApplication;
     runningApplication = undefined;
 
     await originalApplication!.app.close();
 
-    // Start a new instance with the real Outbox worker and SQS publisher.
     runningApplication = await startApplication(true);
 
     await waitUntil(async () => {

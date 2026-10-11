@@ -264,7 +264,6 @@ describe("Wagering reference order E2E", () => {
       referenceExternalTransactionId: betExternalTransactionId,
     };
 
-    // The rollback is deliberately submitted before the referenced bet.
     const rollbackResponse = await submitTransaction(
       rollbackPayload,
       `e2e-idempotency-rollback-${runId}`,
@@ -322,7 +321,6 @@ describe("Wagering reference order E2E", () => {
       currency: "BRL",
     });
 
-    // The scheduled worker must resume the rollback after its retry becomes due.
     await waitUntil(async () => {
       const rows = await query<TransactionRow>(
         `SELECT id,

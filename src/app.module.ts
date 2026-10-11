@@ -9,7 +9,6 @@ import { WalletsModule } from "./infrastructure/http/wallets/wallets.module";
 import { MessagingModule } from "./infrastructure/messaging/messaging.module";
 @Module({
   imports: [
-    // Mantenha os imports que já existem.
     ConfigModule.forRoot({
       isGlobal: true,
       load: [appConfig, databaseConfig],

@@ -118,8 +118,6 @@ async function startApplication(): Promise<RunningApplication> {
   const moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
   })
-    // Preserve the real PostgreSQL-backed retry worker and use cases.
-    // The unrelated publisher and SQS consumer are not part of this scenario.
     .overrideProvider(OutboxPublisherWorker)
     .useValue({})
     .overrideProvider(SqsWagerTransactionConsumer)
@@ -347,9 +345,6 @@ describe("Pending reference expiry E2E", () => {
     let currentAttemptCount = Number(initialRows[0].reference_attempts);
     let finalRow = initialRows[0];
 
-    // Advance only the persisted schedule time so this integration test does
-    // not need to wait through every exponential-backoff interval.
-    // The real scheduled worker still performs each retry and state transition.
     while (
       finalRow.status === "PENDING_REFERENCE" &&
       Date.now() - startedAt < MAX_TOTAL_TIMEOUT_MS

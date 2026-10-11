@@ -24,7 +24,6 @@ export class ReconcileWalletUseCase {
 
   async execute(walletId: string): Promise<WalletReconciliationResult | null> {
     return this.unitOfWork.runInTransaction(async (context) => {
-      // Acquire the same wallet lock used by financial write operations.
       const wallet = await context.wallets.findByIdForUpdate(walletId);
 
       if (!wallet) {

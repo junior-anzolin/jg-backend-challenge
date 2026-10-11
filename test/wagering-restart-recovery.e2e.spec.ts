@@ -99,7 +99,6 @@ async function startApplication(): Promise<RunningApplication> {
 async function restartApplication(): Promise<void> {
   const previousApplication = runningApplication;
 
-  // Stop using the old application and its connection pool before restarting.
   runningApplication = undefined;
 
   await previousApplication?.app.close();
@@ -257,7 +256,6 @@ describe("Wagering restart recovery E2E", () => {
       previousEnvironment.set(key, process.env[key]);
     }
 
-    // Always use local MiniStack credentials, never real AWS credentials.
     process.env.SQS_ENDPOINT = SQS_ENDPOINT;
     process.env.AWS_REGION = "us-east-1";
     process.env.AWS_ACCESS_KEY_ID = "test";
@@ -310,7 +308,6 @@ describe("Wagering restart recovery E2E", () => {
       referenceExternalTransactionId: betExternalTransactionId,
     };
 
-    // Create a durable pending transaction before shutting down the app.
     const rollbackResponse = await submitTransaction(
       rollbackPayload,
       rollbackIdempotencyKey,
@@ -332,14 +329,10 @@ describe("Wagering restart recovery E2E", () => {
     expect(beforeRestart[0].id).toBe(pendingResult.transactionId);
     expect(beforeRestart[0].status).toBe("PENDING_REFERENCE");
 
-    // Simulate a service restart: close the first Nest application and its
-    // database connection pool, then start a new application instance.
     await restartApplication();
 
     expect(runningApplication).toBeDefined();
 
-    // Read from the new application's connection to prove that the pending
-    // transaction survived the restart in PostgreSQL.
     const afterRestart = await findTransaction(
       providerId,
       rollbackExternalTransactionId,
@@ -349,7 +342,6 @@ describe("Wagering restart recovery E2E", () => {
     expect(afterRestart[0].id).toBe(pendingResult.transactionId);
     expect(afterRestart[0].status).toBe("PENDING_REFERENCE");
 
-    // The missing reference arrives only after the application has restarted.
     const betPayload = {
       providerId,
       externalTransactionId: betExternalTransactionId,
@@ -376,8 +368,6 @@ describe("Wagering restart recovery E2E", () => {
       currency: "BRL",
     });
 
-    // The scheduled worker must resume the pending rollback using persisted
-    // retry state and the reference now available in PostgreSQL.
     await waitUntil(async () => {
       const rows = await findTransaction(
         providerId,
@@ -422,7 +412,6 @@ describe("Wagering restart recovery E2E", () => {
     expect(rollbackTransaction!.resulting_balance_amount).toBe("100.00");
     expect(rollbackTransaction!.failure_code).toBeNull();
 
-    // Replaying the completed request must not create another financial effect.
     const replayResponse = await submitTransaction(
       rollbackPayload,
       rollbackIdempotencyKey,
