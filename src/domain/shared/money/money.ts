@@ -44,7 +44,7 @@ export class Money {
   }
 
   isPositive(): boolean {
-    return this.value.isPositive();
+    return this.value.isPositive() && !this.value.isZero();
   }
 
   isNegative(): boolean {
@@ -69,9 +69,9 @@ export class Money {
     return this.value.toFixed(2);
   }
 
-  private assertSameCurrency({ currency }: Money): void {
-    if (currency !== this.currency) {
-      throw new CurrencyMismatchError(this.currency, currency);
+  private assertSameCurrency(other: Money): void {
+    if (other.currency !== this.currency) {
+      throw new CurrencyMismatchError(this.currency, other.currency);
     }
   }
 }

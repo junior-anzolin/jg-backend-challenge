@@ -1,3 +1,4 @@
+import { UniqueConstraintViolationException } from "@mikro-orm/core";
 import {
   BadRequestException,
   Body,
@@ -77,6 +78,15 @@ export class WalletsController {
     } catch (error) {
       if (error instanceof WalletAlreadyExistsError) {
         throw new ConflictException(error.message);
+      }
+
+      if (
+        error instanceof UniqueConstraintViolationException &&
+        error.message.includes("wallets_player_id_currency_unique")
+      ) {
+        throw new ConflictException(
+          "Wallet already exists for this player and currency",
+        );
       }
 
       if (error instanceof InvalidMoneyError) {
