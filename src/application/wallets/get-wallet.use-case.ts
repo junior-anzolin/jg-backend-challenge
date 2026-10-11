@@ -1,7 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { Wallet } from "../../domain/wagering/wallet/wallet";
-import { UNIT_OF_WORK, UnitOfWorkPort } from "../ports/unit-of-work.port";
+import type { UnitOfWorkPort } from "../ports/unit-of-work.port";
+import { UNIT_OF_WORK } from "../ports/unit-of-work.port";
 
 @Injectable()
 export class GetWalletUseCase {

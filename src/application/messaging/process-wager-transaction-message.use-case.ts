@@ -2,7 +2,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
 
 import { InboxMessagePayloadConflictError } from "../ports/inbox-message.repository.port";
-import { UNIT_OF_WORK, UnitOfWorkPort } from "../ports/unit-of-work.port";
+import type { UnitOfWorkPort } from "../ports/unit-of-work.port";
+import { UNIT_OF_WORK } from "../ports/unit-of-work.port";
 
 import { InboxMessage } from "../../domain/messaging/inbox/inbox-message";
 import {

@@ -6,8 +6,8 @@ import {
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
-import { OutboxEventPublisherPort } from "../../../application/ports/outbox-event-publisher.port";
-import { OutboxMessageState } from "../../../domain/messaging/outbox/outbox-message.types";
+import type { OutboxEventPublisherPort } from "../../../application/ports/outbox-event-publisher.port";
+import type { OutboxMessageState } from "../../../domain/messaging/outbox/outbox-message.types";
 
 @Injectable()
 export class SqsOutboxEventPublisher

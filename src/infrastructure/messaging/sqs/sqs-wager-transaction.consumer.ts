@@ -34,6 +34,7 @@ export class SqsWagerTransactionConsumer
   private queueUrlPromise?: Promise<string>;
   private stopping = false;
   private loopPromise?: Promise<void>;
+  private receiveAbortController?: AbortController;
 
   constructor(
     private readonly configService: ConfigService,
@@ -69,8 +70,8 @@ export class SqsWagerTransactionConsumer
 
   async onModuleDestroy(): Promise<void> {
     this.stopping = true;
+    this.receiveAbortController?.abort();
 
-    // Wait for the current long poll and any received batch to finish.
     await this.loopPromise;
     this.client.destroy();
 
@@ -82,17 +83,34 @@ export class SqsWagerTransactionConsumer
       try {
         const queueUrl = await this.getQueueUrl();
 
-        const response = await this.client.send(
-          new ReceiveMessageCommand({
-            QueueUrl: queueUrl,
-            WaitTimeSeconds: WAIT_TIME_SECONDS,
-            VisibilityTimeout: VISIBILITY_TIMEOUT_SECONDS,
-            MaxNumberOfMessages: MAX_NUMBER_OF_MESSAGES,
-          }),
-        );
+        const receiveController = new AbortController();
+        this.receiveAbortController = receiveController;
 
-        // Process sequentially to preserve the order of the received batch.
+        let response;
+
+        try {
+          response = await this.client.send(
+            new ReceiveMessageCommand({
+              QueueUrl: queueUrl,
+              WaitTimeSeconds: WAIT_TIME_SECONDS,
+              VisibilityTimeout: VISIBILITY_TIMEOUT_SECONDS,
+              MaxNumberOfMessages: MAX_NUMBER_OF_MESSAGES,
+            }),
+            {
+              abortSignal: receiveController.signal,
+            },
+          );
+        } finally {
+          if (this.receiveAbortController === receiveController) {
+            this.receiveAbortController = undefined;
+          }
+        }
+
         for (const message of response.Messages ?? []) {
+          if (this.stopping) {
+            break;
+          }
+
           await this.handleMessage(message, queueUrl);
         }
       } catch (error) {

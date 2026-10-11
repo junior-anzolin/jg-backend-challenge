@@ -1,11 +1,10 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 
-import {
-  OUTBOX_EVENT_PUBLISHER,
-  OutboxEventPublisherPort,
-} from "../ports/outbox-event-publisher.port";
-import { UNIT_OF_WORK, UnitOfWorkPort } from "../ports/unit-of-work.port";
+import type { OutboxEventPublisherPort } from "../ports/outbox-event-publisher.port";
+import { OUTBOX_EVENT_PUBLISHER } from "../ports/outbox-event-publisher.port";
+import type { UnitOfWorkPort } from "../ports/unit-of-work.port";
+import { UNIT_OF_WORK } from "../ports/unit-of-work.port";
 
 import { OutboxMessage } from "../../domain/messaging/outbox/outbox-message";
 

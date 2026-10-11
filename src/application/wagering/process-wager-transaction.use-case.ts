@@ -1,11 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 
-import {
-  UNIT_OF_WORK,
+import type {
   UnitOfWorkContext,
   UnitOfWorkPort,
 } from "../ports/unit-of-work.port";
+import { UNIT_OF_WORK } from "../ports/unit-of-work.port";
 
 import { Money } from "../../domain/shared/money/money";
 import { MoneyProps } from "../../domain/shared/money/money.type";

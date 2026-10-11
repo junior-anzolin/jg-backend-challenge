@@ -27,7 +27,8 @@
     "docker:dev:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down",
     "docker:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d",
     "docker:prod:logs": "docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api",
-    "docker:prod:down": "docker compose -f docker-compose.yml -f docker-compose.prod.yml down"
+    "docker:prod:down": "docker compose -f docker-compose.yml -f docker-compose.prod.yml down",
+    "test:e2e": "SQS_ENDPOINT=http://localhost:4566 AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test bun test ./test/*.e2e.spec.ts"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.1149.0",

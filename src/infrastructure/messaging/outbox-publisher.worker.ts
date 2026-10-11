@@ -13,7 +13,8 @@ const POLL_INTERVAL_MS = 1_000;
 export class OutboxPublisherWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutboxPublisherWorker.name);
   private timer?: ReturnType<typeof setInterval>;
-  private running = false;
+  private activeRun?: Promise<void>;
+  private stopping = false;
 
   constructor(
     private readonly publishOutboxMessages: PublishOutboxMessagesUseCase,
@@ -26,21 +27,37 @@ export class OutboxPublisherWorker implements OnModuleInit, OnModuleDestroy {
     this.logger.log("Outbox publisher worker started");
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
+    this.stopping = true;
+
     if (this.timer) {
       clearInterval(this.timer);
+      this.timer = undefined;
     }
+
+    await this.activeRun;
 
     this.logger.log("Outbox publisher worker stopped");
   }
 
   private async tick(): Promise<void> {
-    if (this.running) {
+    if (this.stopping || this.activeRun) {
       return;
     }
 
-    this.running = true;
+    const run = this.runBatch();
+    this.activeRun = run;
 
+    try {
+      await run;
+    } finally {
+      if (this.activeRun === run) {
+        this.activeRun = undefined;
+      }
+    }
+  }
+
+  private async runBatch(): Promise<void> {
     try {
       const result = await this.publishOutboxMessages.execute();
 
@@ -57,8 +74,6 @@ export class OutboxPublisherWorker implements OnModuleInit, OnModuleDestroy {
         "Unexpected error while processing the outbox",
         error instanceof Error ? error.stack : String(error),
       );
-    } finally {
-      this.running = false;
     }
   }
 }

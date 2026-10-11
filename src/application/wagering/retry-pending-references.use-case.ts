@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
-import { UNIT_OF_WORK, UnitOfWorkPort } from "../ports/unit-of-work.port";
+import type { UnitOfWorkPort } from "../ports/unit-of-work.port";
+import { UNIT_OF_WORK } from "../ports/unit-of-work.port";
 import {
   ProcessWagerTransactionInput,
   ProcessWagerTransactionUseCase,

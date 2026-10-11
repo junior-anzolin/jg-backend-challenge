@@ -11,7 +11,8 @@ import { WalletLedgerEntry } from "../../domain/wagering/ledger/wallet-ledger-en
 import { WagerTransaction } from "../../domain/wagering/transaction/wager-transaction";
 import { WagerTransactionKind } from "../../domain/wagering/transaction/wager-transaction-kind";
 import { Wallet } from "../../domain/wagering/wallet/wallet";
-import { UNIT_OF_WORK, UnitOfWorkPort } from "../ports/unit-of-work.port";
+import type { UnitOfWorkPort } from "../ports/unit-of-work.port";
+import { UNIT_OF_WORK } from "../ports/unit-of-work.port";
 
 export interface CreateWalletInput {
   playerId: string;

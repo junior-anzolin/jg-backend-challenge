@@ -116,6 +116,19 @@ bun run migration:down    # reverte a última migration, conforme o arquivo de m
 
 Use `migration:down` conscientemente: uma migration reversível pode remover estruturas ou dados criados por ela.
 
+### Testes E2E
+
+Os testes E2E utilizam PostgreSQL e MiniStack/SQS reais em containers.
+Eles inicializam a aplicação NestJS, criam recursos isolados para cada
+execução e verificam os efeitos persistidos no banco.
+
+Com a infraestrutura em execução e as migrations aplicadas:
+
+```bash
+bun run docker:infra:up
+bun run migration:up
+bun run test:e2e
+
 ### URLs locais
 
 - API: <http://localhost:3000>

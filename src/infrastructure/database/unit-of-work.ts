@@ -1,7 +1,7 @@
 import { EntityManager } from "@mikro-orm/postgresql";
 import { Injectable } from "@nestjs/common";
 
-import {
+import type {
   UnitOfWorkContext,
   UnitOfWorkPort,
 } from "../../application/ports/unit-of-work.port";
