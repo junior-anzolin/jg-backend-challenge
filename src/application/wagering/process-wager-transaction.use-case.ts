@@ -23,6 +23,7 @@ import { WagerTransactionProcessed } from "../../domain/messaging/events/wager-t
 import { WagerTransactionRejected } from "../../domain/messaging/events/wager-transaction-rejected";
 import { WalletBalanceChanged } from "../../domain/messaging/events/wallet-balance-changed";
 import { OutboxMessage } from "../../domain/messaging/outbox/outbox-message";
+import { REFERENCE_RETRY_POLICY } from "./reference-retry-policy";
 
 export interface ProcessWagerTransactionInput {
   providerId: string;
@@ -119,26 +120,45 @@ export class ProcessWagerTransactionUseCase {
       causationId: input.causationId,
     };
 
+    let transactionToResume: WagerTransaction | undefined;
+
     const existing = await context.wagerTransactions.findByIdempotencyKey(
       input.idempotencyKey,
     );
 
     if (existing) {
-      return this.replay(existing, payloadHash);
-    }
-
-    const existingExternal =
-      await context.wagerTransactions.findByProviderAndExternalTransactionId(
-        input.providerId,
-        input.externalTransactionId,
-      );
-
-    if (existingExternal) {
-      if (!existingExternal.matchesPayload(payloadHash)) {
-        throw new WagerTransactionAlreadyExistsError();
+      if (!existing.matchesPayload(payloadHash)) {
+        throw new IdempotencyConflictError();
       }
 
-      return this.toResult(existingExternal, true);
+      if (existing.status !== WagerTransactionStatus.PendingReference) {
+        return this.toResult(existing, true);
+      }
+
+      if (
+        existing.nextReferenceAttemptAt &&
+        existing.nextReferenceAttemptAt > new Date()
+      ) {
+        return this.toResult(existing, true);
+      }
+
+      transactionToResume = existing;
+    }
+
+    if (!transactionToResume) {
+      const existingExternal =
+        await context.wagerTransactions.findByProviderAndExternalTransactionId(
+          input.providerId,
+          input.externalTransactionId,
+        );
+
+      if (existingExternal) {
+        if (!existingExternal.matchesPayload(payloadHash)) {
+          throw new WagerTransactionAlreadyExistsError();
+        }
+
+        return this.toResult(existingExternal, true);
+      }
     }
 
     const wallet = await context.wallets.findByIdForUpdate(input.walletId);
@@ -159,23 +179,42 @@ export class ProcessWagerTransactionUseCase {
       );
 
     if (concurrentExisting) {
-      return this.replay(concurrentExisting, payloadHash);
+      if (!concurrentExisting.matchesPayload(payloadHash)) {
+        throw new IdempotencyConflictError();
+      }
+
+      if (
+        concurrentExisting.status !== WagerTransactionStatus.PendingReference
+      ) {
+        return this.toResult(concurrentExisting, true);
+      }
+
+      if (
+        concurrentExisting.nextReferenceAttemptAt &&
+        concurrentExisting.nextReferenceAttemptAt > new Date()
+      ) {
+        return this.toResult(concurrentExisting, true);
+      }
+
+      transactionToResume = concurrentExisting;
     }
 
-    const transaction = WagerTransaction.create({
-      id: randomUUID(),
-      providerId: input.providerId,
-      externalTransactionId: input.externalTransactionId,
-      idempotencyKey: input.idempotencyKey,
-      payloadHash,
-      walletId: wallet.id,
-      playerId: input.playerId,
-      roundId: input.roundId,
-      gameId: input.gameId,
-      kind: input.kind,
-      money,
-      referenceExternalTransactionId: input.referenceExternalTransactionId,
-    });
+    const transaction =
+      transactionToResume ??
+      WagerTransaction.create({
+        id: randomUUID(),
+        providerId: input.providerId,
+        externalTransactionId: input.externalTransactionId,
+        idempotencyKey: input.idempotencyKey,
+        payloadHash,
+        walletId: wallet.id,
+        playerId: input.playerId,
+        roundId: input.roundId,
+        gameId: input.gameId,
+        kind: input.kind,
+        money,
+        referenceExternalTransactionId: input.referenceExternalTransactionId,
+      });
 
     if (wallet.currency !== money.currency) {
       return this.reject(
@@ -198,20 +237,37 @@ export class ProcessWagerTransactionUseCase {
 
       if (!reference) {
         const now = new Date();
+        const wasAlreadyPending =
+          transaction.status === WagerTransactionStatus.PendingReference;
+
+        if (
+          transaction.referenceAttempts >= REFERENCE_RETRY_POLICY.maxAttempts
+        ) {
+          return this.reject(
+            context,
+            transaction,
+            FailureCode.ReferenceNotFound,
+            eventContext,
+            wallet.balance,
+          );
+        }
+
         transaction.markPendingReference();
         transaction.scheduleReferenceRetry(now);
 
         await context.wagerTransactions.save(transaction);
 
-        await context.outboxMessages.save(
-          OutboxMessage.enqueue(
-            WagerTransactionPendingReference.from(
-              transaction,
-              eventContext,
-              now,
+        if (!wasAlreadyPending) {
+          await context.outboxMessages.save(
+            OutboxMessage.enqueue(
+              WagerTransactionPendingReference.from(
+                transaction,
+                eventContext,
+                now,
+              ),
             ),
-          ),
-        );
+          );
+        }
 
         return this.toResult(transaction);
       }

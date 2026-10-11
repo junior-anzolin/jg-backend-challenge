@@ -214,6 +214,16 @@ O `ACK` só deve ocorrer depois do commit. Se o commit acontecer, mas o processo
 
 Uma rejeição por regra de negócio é um resultado terminal válido. Fazer rollback dessa rejeição apagaria o registro que precisamos preservar para auditoria e idempotência. Uma falha técnica antes do commit, por sua vez, exige rollback para impedir que apenas parte das alterações seja confirmada.
 
+#### Política de retentativa de referências ausentes
+
+Transações `REFUND` e `ROLLBACK` sem referência disponível são persistidas como `PENDING_REFERENCE`, com contador de tentativas e próxima execução gravados no PostgreSQL.
+
+O worker consulta periodicamente as operações cujo horário de retentativa foi atingido e reutiliza o caso de uso financeiro existente. Dessa forma, o reprocessamento preserva as regras de negócio, a idempotência e o lock por carteira, sem duplicar a implementação do processamento financeiro.
+
+A política permite até 10 retentativas agendadas, utilizando backoff exponencial iniciado em 1 segundo, com crescimento por fator 2 e intervalo máximo de 5 minutos. Se a referência continuar ausente após o limite estabelecido, a transação é rejeitada com `REFERENCE_NOT_FOUND`, e o evento de rejeição é persistido na Outbox.
+
+A quantidade de tentativas e o próximo horário são persistidos no banco, permitindo que o processamento seja retomado após reinicializações da aplicação. O worker não deve depender de estado mantido exclusivamente em memória.
+
 ### 4.7 Idempotência e recuperação de concorrência
 
 O lock, a Inbox e a chave de idempotência protegem invariantes diferentes:
