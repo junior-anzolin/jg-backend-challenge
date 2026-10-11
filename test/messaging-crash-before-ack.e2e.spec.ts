@@ -16,7 +16,10 @@ import {
   ProcessWagerTransactionMessageUseCase,
   WagerTransactionRequestedMessage,
 } from "../src/application/messaging/process-wager-transaction-message.use-case";
-import { UNIT_OF_WORK, UnitOfWorkPort } from "../src/application/ports/unit-of-work.port";
+import {
+  UNIT_OF_WORK,
+  UnitOfWorkPort,
+} from "../src/application/ports/unit-of-work.port";
 import { ProcessWagerTransactionUseCase } from "../src/application/wagering/process-wager-transaction.use-case";
 import { OutboxPublisherWorker } from "../src/infrastructure/messaging/outbox-publisher.worker";
 import { PendingReferenceRetryWorker } from "../src/infrastructure/messaging/pending-reference-retry.worker";
@@ -24,6 +27,7 @@ import { PendingReferenceRetryWorker } from "../src/infrastructure/messaging/pen
 const SQS_ENDPOINT = "http://localhost:4566";
 const INITIAL_BALANCE = "100.00";
 const BET_AMOUNT = "25.00";
+const VISIBILITY_TIMEOUT_SECONDS = 2;
 const CONSUMER_NAME = "wager-transactions";
 const TIMEOUT_MS = 20_000;
 
@@ -69,6 +73,11 @@ type BalanceRow = {
   balance: string;
 };
 
+type QueueCounts = {
+  visible: number;
+  inFlight: number;
+};
+
 type RunningApplication = {
   app: INestApplication;
   entityManager: EntityManager;
@@ -90,12 +99,25 @@ const managedEnvironmentKeys = [
   "AWS_SECRET_ACCESS_KEY",
   "SQS_WAGER_TRANSACTIONS_QUEUE_NAME",
   "SQS_WAGER_EVENTS_QUEUE_NAME",
+  "SQS_VISIBILITY_TIMEOUT_SECONDS",
 ] as const;
 
 const previousEnvironment = new Map<
   (typeof managedEnvironmentKeys)[number],
   string | undefined
 >();
+
+function restoreEnvironment(): void {
+  for (const key of managedEnvironmentKeys) {
+    const previousValue = previousEnvironment.get(key);
+
+    if (previousValue === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = previousValue;
+    }
+  }
+}
 
 async function startApplication(
   mode: ProcessingMode,
@@ -123,16 +145,15 @@ async function startApplication(
 
         return {
           execute: async (message: WagerTransactionRequestedMessage) => {
-            // This is the real use case. It commits Inbox, transaction,
-            // wallet, ledger and Outbox state atomically.
+            // Execute the real use case. Inbox, transaction, wallet, ledger
+            // and Outbox changes are committed by the real unit of work.
             const result = await realUseCase.execute(message);
 
             if (shouldInjectCrash) {
               shouldInjectCrash = false;
               injectedCrashAfterCommit = true;
 
-              // Simulate interruption after commit but before the consumer
-              // can execute DeleteMessage (the SQS acknowledgement).
+              // The consumer has not yet reached DeleteMessage (SQS ack).
               throw new Error(
                 "Injected interruption after database commit and before SQS acknowledgement",
               );
@@ -165,10 +186,7 @@ async function startApplication(
   }
 }
 
-async function query<T>(
-  sql: string,
-  params: unknown[] = [],
-): Promise<T[]> {
+async function query<T>(sql: string, params: unknown[] = []): Promise<T[]> {
   if (!runningApplication) {
     throw new Error("E2E application has not been initialized");
   }
@@ -201,22 +219,19 @@ async function createWallet(runId: string): Promise<WalletResponse> {
     throw new Error("E2E application has not been initialized");
   }
 
-  const response = await fetch(
-    `${runningApplication.serverUrl}/wallets`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        playerId: `e2e-player-${runId}`,
-        initialBalance: {
-          amount: INITIAL_BALANCE,
-          currency: "BRL",
-        },
-      }),
+  const response = await fetch(`${runningApplication.serverUrl}/wallets`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      playerId: `e2e-player-${runId}`,
+      initialBalance: {
+        amount: INITIAL_BALANCE,
+        currency: "BRL",
+      },
+    }),
+  });
 
   expect(response.status).toBe(201);
 
@@ -247,6 +262,29 @@ async function sendDelivery(
       MessageDeduplicationId: deduplicationId,
     }),
   );
+}
+
+async function getQueueCounts(): Promise<QueueCounts> {
+  if (!sqs || !queueUrl) {
+    throw new Error("E2E SQS queue has not been initialized");
+  }
+
+  const response = await sqs.send(
+    new GetQueueAttributesCommand({
+      QueueUrl: queueUrl,
+      AttributeNames: [
+        "ApproximateNumberOfMessages",
+        "ApproximateNumberOfMessagesNotVisible",
+      ],
+    }),
+  );
+
+  return {
+    visible: Number(response.Attributes?.ApproximateNumberOfMessages ?? "-1"),
+    inFlight: Number(
+      response.Attributes?.ApproximateNumberOfMessagesNotVisible ?? "-1",
+    ),
+  };
 }
 
 async function findTransaction(
@@ -321,14 +359,16 @@ describe("SQS crash before acknowledgement E2E", () => {
     process.env.AWS_REGION = "us-east-1";
     process.env.AWS_ACCESS_KEY_ID = "test";
     process.env.AWS_SECRET_ACCESS_KEY = "test";
+    process.env.SQS_VISIBILITY_TIMEOUT_SECONDS = String(
+      VISIBILITY_TIMEOUT_SECONDS,
+    );
 
     const queueName = `wager-transactions-crash-${randomUUID()}.fifo`;
     process.env.SQS_WAGER_TRANSACTIONS_QUEUE_NAME = queueName;
 
-    // The Outbox worker is disabled in this test, so this queue is not used
-    // for publishing. Preserve a valid isolated name in the environment.
-    process.env.SQS_WAGER_EVENTS_QUEUE_NAME =
-      `wager-events-crash-${randomUUID()}.fifo`;
+    // The Outbox worker is disabled, so this queue is only used by the
+    // transaction consumer under test.
+    process.env.SQS_WAGER_EVENTS_QUEUE_NAME = `wager-events-crash-${randomUUID()}.fifo`;
 
     sqs = new SQSClient({
       region: "us-east-1",
@@ -339,22 +379,29 @@ describe("SQS crash before acknowledgement E2E", () => {
       },
     });
 
-    const queue = await sqs.send(
-      new CreateQueueCommand({
-        QueueName: queueName,
-        Attributes: {
-          FifoQueue: "true",
-          ContentBasedDeduplication: "false",
-          VisibilityTimeout: "60",
-        },
-      }),
-    );
+    try {
+      const queue = await sqs.send(
+        new CreateQueueCommand({
+          QueueName: queueName,
+          Attributes: {
+            FifoQueue: "true",
+            ContentBasedDeduplication: "false",
+            VisibilityTimeout: String(VISIBILITY_TIMEOUT_SECONDS),
+          },
+        }),
+      );
 
-    if (!queue.QueueUrl) {
-      throw new Error("MiniStack did not return the E2E queue URL");
+      if (!queue.QueueUrl) {
+        throw new Error("MiniStack did not return the E2E queue URL");
+      }
+
+      queueUrl = queue.QueueUrl;
+    } catch (error) {
+      sqs.destroy();
+      sqs = undefined;
+      restoreEnvironment();
+      throw error;
     }
-
-    queueUrl = queue.QueueUrl;
   });
 
   afterAll(async () => {
@@ -375,16 +422,7 @@ describe("SQS crash before acknowledgement E2E", () => {
         sqs?.destroy();
         sqs = undefined;
         queueUrl = undefined;
-
-        for (const key of managedEnvironmentKeys) {
-          const previousValue = previousEnvironment.get(key);
-
-          if (previousValue === undefined) {
-            delete process.env[key];
-          } else {
-            process.env[key] = previousValue;
-          }
-        }
+        restoreEnvironment();
       }
     }
   });
@@ -393,8 +431,6 @@ describe("SQS crash before acknowledgement E2E", () => {
     injectedCrashAfterCommit = false;
     duplicateDeliveryObserved = false;
 
-    // First instance uses a one-time fault injected immediately after the
-    // real database transaction commits and before SQS DeleteMessage.
     runningApplication = await startApplication("crash-after-commit");
 
     const runId = randomUUID();
@@ -424,19 +460,13 @@ describe("SQS crash before acknowledgement E2E", () => {
       },
     };
 
-    await sendDelivery(
-      message,
-      `original-${wallet.id}`,
-      `original-${runId}`,
-    );
+    await sendDelivery(message, `e2e-group-${runId}`, `e2e-dedup-${runId}`);
 
     await waitUntil(
       async () => injectedCrashAfterCommit,
       "the injected post-commit interruption",
     );
 
-    // The wrapper throws only after the real use case returned, which means
-    // the Inbox and financial transaction were already committed.
     const committedTransaction = await findTransaction(
       providerId,
       externalTransactionId,
@@ -469,59 +499,32 @@ describe("SQS crash before acknowledgement E2E", () => {
       balance_after: "75.00",
     });
 
-    // Shut down the first application after the failure was injected, leaving
-    // the original SQS message unacknowledged and in flight.
+    // Close the first application without acknowledging the SQS delivery.
+    // The original message remains in flight until its visibility timeout.
     const interruptedApplication = runningApplication;
     runningApplication = undefined;
 
     await interruptedApplication!.app.close();
 
-    // Republish the identical application envelope under a distinct FIFO
-    // message group so it can be delivered while the original remains hidden.
-    // Its application messageId and payload are unchanged, exercising Inbox
-    // deduplication after the application instance has been restarted.
-    await sendDelivery(
-      message,
-      `recovery-${wallet.id}`,
-      `recovery-${runId}`,
-    );
+    const countsWhileWaiting = await getQueueCounts();
 
+    expect(countsWhileWaiting.inFlight).toBe(1);
+
+    // Restart the application against the same queue. Once the original
+    // delivery becomes visible, the persistent Inbox must identify it as a
+    // duplicate and let the consumer acknowledge it without financial effects.
     runningApplication = await startApplication("observe-duplicate");
 
     await waitUntil(
       async () => duplicateDeliveryObserved,
-      "the restarted consumer to detect the duplicate Inbox message",
+      "the restarted consumer to detect the redelivered Inbox message",
     );
 
-    // Confirm that the recovery delivery has been acknowledged while the
-    // original, failed delivery remains unacknowledged.
-    await waitUntil(
-      async () => {
-        if (!sqs || !queueUrl) {
-          return false;
-        }
+    await waitUntil(async () => {
+      const counts = await getQueueCounts();
 
-        const response = await sqs.send(
-          new GetQueueAttributesCommand({
-            QueueUrl: queueUrl,
-            AttributeNames: [
-              "ApproximateNumberOfMessages",
-              "ApproximateNumberOfMessagesNotVisible",
-            ],
-          }),
-        );
-
-        const visible = Number(
-          response.Attributes?.ApproximateNumberOfMessages ?? "-1",
-        );
-        const inFlight = Number(
-          response.Attributes?.ApproximateNumberOfMessagesNotVisible ?? "-1",
-        );
-
-        return visible === 0 && inFlight === 1;
-      },
-      "the recovery delivery to be acknowledged by SQS",
-    );
+      return counts.visible === 0 && counts.inFlight === 0;
+    }, "the redelivered message to be acknowledged");
 
     const finalTransactions = await findTransaction(
       providerId,
@@ -532,6 +535,7 @@ describe("SQS crash before acknowledgement E2E", () => {
     expect(finalTransactions[0].id).toBe(committedTransaction[0].id);
     expect(finalTransactions[0].status).toBe("PROCESSED");
     expect(finalTransactions[0].resulting_balance_amount).toBe("75.00");
+    expect(finalTransactions[0].failure_code).toBeNull();
 
     const finalInbox = await findInboxMessage(messageId);
 
@@ -571,15 +575,13 @@ describe("SQS crash before acknowledgement E2E", () => {
     expect(outboxRows).toHaveLength(2);
 
     expect(
-      outboxRows.find(
-        (row) => row.event_type === "WagerTransactionProcessed",
-      )?.count,
+      outboxRows.find((row) => row.event_type === "WagerTransactionProcessed")
+        ?.count,
     ).toBe("1");
 
     expect(
-      outboxRows.find(
-        (row) => row.event_type === "WalletBalanceChanged",
-      )?.count,
+      outboxRows.find((row) => row.event_type === "WalletBalanceChanged")
+        ?.count,
     ).toBe("1");
 
     await expectWalletBalanceMatchesLedger(wallet.id, "75.00");
