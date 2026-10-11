@@ -19,7 +19,8 @@ import {
 import { WagerTransactionKind } from "../../../domain/wagering/transaction/wager-transaction-kind";
 
 const WAIT_TIME_SECONDS = 20;
-const VISIBILITY_TIMEOUT_SECONDS = 60;
+const DEFAULT_VISIBILITY_TIMEOUT_SECONDS = 60;
+const MAX_VISIBILITY_TIMEOUT_SECONDS = 43_200;
 const MAX_NUMBER_OF_MESSAGES = 1;
 const POLL_ERROR_DELAY_MS = 1_000;
 
@@ -30,6 +31,7 @@ export class SqsWagerTransactionConsumer
   private readonly logger = new Logger(SqsWagerTransactionConsumer.name);
   private readonly client: SQSClient;
   private readonly queueName: string;
+  private readonly visibilityTimeoutSeconds: number;
 
   private queueUrlPromise?: Promise<string>;
   private stopping = false;
@@ -45,6 +47,27 @@ export class SqsWagerTransactionConsumer
     this.queueName =
       this.configService.get<string>("SQS_WAGER_TRANSACTIONS_QUEUE_NAME") ??
       "wager-transactions.fifo";
+
+    const configuredVisibilityTimeout = this.configService.get<string>(
+      "SQS_VISIBILITY_TIMEOUT_SECONDS",
+    );
+
+    const visibilityTimeoutSeconds =
+      configuredVisibilityTimeout === undefined
+        ? DEFAULT_VISIBILITY_TIMEOUT_SECONDS
+        : Number(configuredVisibilityTimeout);
+
+    if (
+      !Number.isInteger(visibilityTimeoutSeconds) ||
+      visibilityTimeoutSeconds < 1 ||
+      visibilityTimeoutSeconds > MAX_VISIBILITY_TIMEOUT_SECONDS
+    ) {
+      throw new Error(
+        `SQS_VISIBILITY_TIMEOUT_SECONDS must be an integer between 1 and ${MAX_VISIBILITY_TIMEOUT_SECONDS}`,
+      );
+    }
+
+    this.visibilityTimeoutSeconds = visibilityTimeoutSeconds;
 
     this.client = new SQSClient({
       region: this.configService.get<string>("AWS_REGION") ?? "us-east-1",
@@ -93,7 +116,7 @@ export class SqsWagerTransactionConsumer
             new ReceiveMessageCommand({
               QueueUrl: queueUrl,
               WaitTimeSeconds: WAIT_TIME_SECONDS,
-              VisibilityTimeout: VISIBILITY_TIMEOUT_SECONDS,
+              VisibilityTimeout: this.visibilityTimeoutSeconds,
               MaxNumberOfMessages: MAX_NUMBER_OF_MESSAGES,
             }),
             {
