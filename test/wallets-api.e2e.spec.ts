@@ -716,8 +716,6 @@ describe("Wallets API E2E", () => {
     const playerId = `e2e-player-${randomUUID()}`;
     const wallet = await createWalletOrFail(playerId);
 
-    // Corrompe deliberadamente o saldo materializado para simular divergência.
-    // A alteração é feita apenas como preparação do cenário E2E.
     await query(
       `UPDATE wallets
             SET balance = ?

@@ -8,6 +8,7 @@ import { AppModule } from "../src/app.module";
 import { OutboxPublisherWorker } from "../src/infrastructure/messaging/outbox-publisher.worker";
 import { PendingReferenceRetryWorker } from "../src/infrastructure/messaging/pending-reference-retry.worker";
 import { SqsWagerTransactionConsumer } from "../src/infrastructure/messaging/sqs/sqs-wager-transaction.consumer";
+import { MetricsService } from "../src/infrastructure/observability/metrics.service";
 
 const SQS_ENDPOINT = "http://localhost:4566";
 const INITIAL_BALANCE = "100.00";
@@ -398,4 +399,55 @@ describe("Observability metrics E2E", () => {
       readMetricValue(metricsAfter!, "wager_processing_duration_seconds_count"),
     ).toBeGreaterThan(baselineProcessingCount);
   }, 30_000);
+
+  it("updates retry, DLQ, lock-conflict, and outbox-lag metrics", async () => {
+    if (!runningApplication) {
+      throw new Error("E2E application has not been initialized");
+    }
+
+    const metricsService = runningApplication.app.get(MetricsService);
+    const baselineMetrics = await getMetrics();
+
+    const baselineRetries = readMetricValue(
+      baselineMetrics,
+      "wager_retries_total",
+    );
+    const baselineDlqMessages = readMetricValue(
+      baselineMetrics,
+      "wager_dlq_messages_total",
+    );
+    const baselineLockConflicts = readMetricValue(
+      baselineMetrics,
+      "wager_lock_conflicts_total",
+    );
+
+    try {
+      metricsService.recordRetry();
+      metricsService.recordDlqMessage();
+      metricsService.recordLockConflict();
+      metricsService.setOutboxLag(12.5);
+
+      const metricsAfter = await getMetrics();
+
+      expectMetricFamilies(metricsAfter);
+
+      expect(readMetricValue(metricsAfter, "wager_retries_total")).toBe(
+        baselineRetries + 1,
+      );
+
+      expect(readMetricValue(metricsAfter, "wager_dlq_messages_total")).toBe(
+        baselineDlqMessages + 1,
+      );
+
+      expect(readMetricValue(metricsAfter, "wager_lock_conflicts_total")).toBe(
+        baselineLockConflicts + 1,
+      );
+
+      expect(readMetricValue(metricsAfter, "wager_outbox_lag_seconds")).toBe(
+        12.5,
+      );
+    } finally {
+      metricsService.setOutboxLag(0);
+    }
+  });
 });

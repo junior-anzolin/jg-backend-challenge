@@ -875,8 +875,6 @@ describe("Wagering financial rules E2E", () => {
 
     const brlWallet = await createWallet(playerId, INITIAL_BALANCE, "BRL");
 
-    // A second currency permits a second wallet for the same player,
-    // allowing the wallet mismatch to be tested independently.
     const usdWallet = await createWallet(playerId, INITIAL_BALANCE, "USD");
     const otherPlayerWallet = await createWallet(
       otherPlayerId,
