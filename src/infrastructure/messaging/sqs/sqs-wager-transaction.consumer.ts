@@ -170,19 +170,44 @@ export class SqsWagerTransactionConsumer
 
     try {
       const payload = this.parseMessage(message.Body);
+      const result = await this.processMessage.execute(payload);
 
-      await this.processMessage.execute(payload);
-
-      // Ack only after the application transaction has committed.
       await this.client.send(
         new DeleteMessageCommand({
           QueueUrl: queueUrl,
           ReceiptHandle: message.ReceiptHandle,
         }),
       );
+
+      const correlationId =
+        payload.data.correlationId?.trim() || payload.messageId;
+
+      if (result.transactionResult) {
+        this.logger.log(
+          JSON.stringify({
+            event: "wager_transaction_message_acknowledged",
+            correlationId,
+            messageId: payload.messageId,
+            transactionId: result.transactionResult.transactionId,
+            walletId: payload.data.walletId,
+            providerId: payload.data.providerId,
+            status: result.transactionResult.status,
+            duplicateMessage: result.duplicateMessage,
+          }),
+        );
+      } else {
+        this.logger.log(
+          JSON.stringify({
+            event: "wager_transaction_duplicate_message_acknowledged",
+            correlationId,
+            messageId: payload.messageId,
+            walletId: payload.data.walletId,
+            providerId: payload.data.providerId,
+            duplicateMessage: true,
+          }),
+        );
+      }
     } catch (error) {
-      // Leave the message in the queue. SQS redelivery and the configured
-      // redrive policy determine whether it will be retried or sent to the DLQ.
       this.logger.error(
         `Could not process SQS message ${message.MessageId ?? "unknown"}; it will remain available for retry`,
         error instanceof Error ? error.stack : String(error),
