@@ -32,7 +32,7 @@ A escolha não implica que *`decimal.js`* seja matematicamente superior a *`big.
 
 ## 3. Política de retry da Outbox
 
-A publicação de mensagens da Outbox utiliza ****exponential backoff****, aumentando progressivamente o intervalo entre tentativas para evitar chamadas excessivas quando o serviço de mensageria estiver temporariamente indisponível.
+A publicação de mensagens da Outbox utiliza **exponential backoff**, aumentando progressivamente o intervalo entre tentativas para evitar chamadas excessivas quando o serviço de mensageria estiver temporariamente indisponível.
 
 A política inicial adotada é:
 
@@ -45,19 +45,12 @@ A política inicial adotada é:
 - **Agendamento:** cada chamada a *`scheduleRetry(now)`* incrementa o contador *`attempts`* e atualiza *`nextAttemptAt`*, usando o horário recebido pelo método.
 
 | Tentativas registradas | Espera até a próxima tentativa |
-
 | ---: | ---: |
-
 | 1 | 1 segundo |
-
 | 2 | 2 segundos |
-
 | 3 | 4 segundos |
-
 | 4 | 8 segundos |
-
 | 5 | 16 segundos |
-
 | Posteriores | Crescimento exponencial, limitado a 5 minutos |
 
 O objetivo é reduzir a pressão sobre o serviço durante falhas temporárias, permitindo que a publicação seja retomada sem intervenção manual imediata.
@@ -82,39 +75,39 @@ O lock precisa ser adquirido dentro de uma transação SQL e permanece ativo at�
 
 No nível de isolamento padrão *`READ COMMITTED`* do PostgreSQL, se uma transação aguarda uma linha bloqueada e a transação anterior confirma a alteração, a consulta bloqueada pode prosseguir observando a versão atualizada da linha. Se houver timeout, deadlock ou outra falha técnica, a aplicação deve tratar o erro e encerrar corretamente a transação, normalmente com rollback.
 
-*```mermaid*
+```mermaid
 
-*sequenceDiagram*
+sequenceDiagram
 
-*&#x20;   participant T1 as Transação T1*
+participant T1 as Transação T1
 
-*&#x20;   participant DB as PostgreSQL*
+participant DB as PostgreSQL
 
-*&#x20;   participant T2 as Transação T2*
+participant T2 as Transação T2
 
-*&#x20;   T1->>DB: SELECT wallet FOR UPDATE*
+T1->>DB: SELECT wallet FOR UPDATE
 
-*&#x20;   DB-->>T1: Retorna carteira e concede lock*
+DB-->>T1: Retorna carteira e concede lock
 
-*&#x20;   T2->>DB: SELECT wallet FOR UPDATE*
+T2->>DB: SELECT wallet FOR UPDATE
 
-*&#x20;   Note over DB: T2 aguarda o lock da mesma linha*
+Note over DB: T2 aguarda o lock da mesma linha
 
-*&#x20;   Note over T2: O await permanece pendente;*
+Note over T2: O await permanece pendente;
 
-*&#x20;   Note over T2: o event loop do Node.js continua*
+Note over T2: o event loop do Node.js continua
 
-*&#x20;   T1->>DB: Atualiza saldo e executa COMMIT*
+T1->>DB: Atualiza saldo e executa COMMIT
 
-*&#x20;   DB->>DB: Libera o lock*
+DB->>DB: Libera o lock
 
-*&#x20;   DB-->>T2: A consulta prossegue com a linha atualizada*
+DB-->>T2: A consulta prossegue com a linha atualizada
 
-*&#x20;   T2->>T2: Valida a operação com o saldo atualizado*
+T2->>T2: Valida a operação com o saldo atualizado
 
-*&#x20;   T2->>DB: Persiste resultado e executa COMMIT*
+T2->>DB: Persiste resultado e executa COMMIT
 
-*```*
+```
 
 O lock do banco não é uma fila de mensagens: o PostgreSQL organiza a espera pelo bloqueio da linha, mas não reenfileira uma operação no SQS. A aplicação continua responsável por distinguir uma rejeição de negócio de uma falha técnica e decidir se deve confirmar ou permitir nova entrega da mensagem.
 
@@ -138,26 +131,19 @@ Resultado esperado: uma transação *`PROCESSED`*, uma *`REJECTED`*, saldo final
 
 *`WagerTransaction`* e *`WalletLedgerEntry`* representam conceitos diferentes e complementares.
 
-- *******`WagerTransaction`******* registra a operação recebida e seu resultado de negócio: identificadores do provedor, chave de idempotência, payload, tipo, referência, status, código de falha e, quando processada, o saldo resultante original.
+- **`WagerTransaction`** registra a operação recebida e seu resultado de negócio: identificadores do provedor, chave de idempotência, payload, tipo, referência, status, código de falha e, quando processada, o saldo resultante original.
 
-- *******`WalletLedgerEntry`******* registra uma movimentação financeira efetiva: direção (*`DEBIT`* ou *`CREDIT`*), valor, moeda, saldo anterior e saldo posterior. Os lançamentos são históricos e não devem ser atualizados ou excluídos pela aplicação.
+- **`WalletLedgerEntry`** registra uma movimentação financeira efetiva: direção (*`DEBIT`* ou *`CREDIT`*), valor, moeda, saldo anterior e saldo posterior. Os lançamentos são históricos e não devem ser atualizados ou excluídos pela aplicação.
 
 Nem toda transação de negócio produz um lançamento financeiro:
 
 | Operação ou resultado | Registro em *`WagerTransaction`* | Lançamento no ledger |
-
 | --- | --- | --- |
-
 | *`OPENING`* com saldo inicial positivo | Sim | Crédito inicial |
-
 | *`BET`* processada | Sim | Débito |
-
 | *`WIN`* processada | Sim | Crédito |
-
 | *`LOSS`* processada | Sim | Nenhum, pois não altera o saldo |
-
 | Operação *`REJECTED`* | Sim | Nenhum |
-
 | *`REFUND`* ou *`ROLLBACK`* pendente de referência | Sim, com *`PENDING_REFERENCE`* | Nenhum até que a operação seja resolvida e processada |
 
 A restrição única *`(wallet_id, transaction_id)`* impede mais de um lançamento para a mesma transação na mesma carteira. Isso protege contra duplicação de lançamentos, mas a aplicação ainda precisa garantir que uma operação processada que altera o saldo seja persistida junto com seu lançamento na mesma transação SQL.
@@ -210,73 +196,73 @@ A fila, a Inbox, o lock, a idempotência e a Outbox têm responsabilidades disti
 
 - **Aplicação:** coordena o fluxo, trata conflitos e decide quando confirmar a mensagem ou permitir nova entrega.
 
-*```mermaid*
+```mermaid
 
-*flowchart TD*
+flowchart TD
 
-*&#x20;   A["SQS entrega mensagem"] --> B["Iniciar transação SQL"]*
+A["SQS entrega mensagem"] --> B["Iniciar transação SQL"]
 
-*&#x20;   B --> C{"Mensagem já concluída na Inbox?"}*
+B --> C{"Mensagem já concluída na Inbox?"}
 
-*&#x20;   C -->|Sim| D["Não repetir efeitos financeiros"]*
+C -->|Sim| D["Não repetir efeitos financeiros"]
 
-*&#x20;   D --> E["Finalizar transação"]*
+D --> E["Finalizar transação"]
 
-*&#x20;   E --> F["ACK no SQS"]*
+E --> F["ACK no SQS"]
 
-*&#x20;   C -->|Não| G["Registrar ou reivindicar Inbox na transação"]*
+C -->|Não| G["Registrar ou reivindicar Inbox na transação"]
 
-*&#x20;   G --> H["Verificar chave de idempotência e payload"]*
+G --> H["Verificar chave de idempotência e payload"]
 
-*&#x20;   H --> I{"Já existe uma operação?"}*
+H --> I{"Já existe uma operação?"}
 
-*&#x20;   I -->|Sim, mesmo payload| J["Recuperar resultado original"]*
+I -->|Sim, mesmo payload| J["Recuperar resultado original"]
 
-*&#x20;   I -->|Sim, payload divergente| K["Tratar conflito sem efeitos financeiros"]*
+I -->|Sim, payload divergente| K["Tratar conflito sem efeitos financeiros"]
 
-*&#x20;   I -->|Não| L["Adquirir lock da carteira"]*
+I -->|Não| L["Adquirir lock da carteira"]
 
-*&#x20;   L --> M["Revalidar idempotência quando necessário"]*
+L --> M["Revalidar idempotência quando necessário"]
 
-*&#x20;   M --> N["Ler saldo atualizado e validar regras"]*
+M --> N["Ler saldo atualizado e validar regras"]
 
-*&#x20;   N --> O{"Operação válida?"}*
+N --> O{"Operação válida?"}
 
-*&#x20;   O -->|Sim| P["Atualizar carteira e transação"]*
+O -->|Sim| P["Atualizar carteira e transação"]
 
-*&#x20;   P --> Q["Gravar ledger quando houver movimentação"]*
+P --> Q["Gravar ledger quando houver movimentação"]
 
-*&#x20;   Q --> R["Gravar evento na Outbox"]*
+Q --> R["Gravar evento na Outbox"]
 
-*&#x20;   O -->|Não: regra de negócio| S["Persistir REJECTED sem alterar saldo nem ledger"]*
+O -->|Não: regra de negócio| S["Persistir REJECTED sem alterar saldo nem ledger"]
 
-*&#x20;   S --> T["Gravar evento de rejeição na Outbox"]*
+S --> T["Gravar evento de rejeição na Outbox"]
 
-*&#x20;   J --> U["Marcar Inbox como concluída"]*
+J --> U["Marcar Inbox como concluída"]
 
-*&#x20;   K --> U*
+K --> U
 
-*&#x20;   R --> U*
+R --> U
 
-*&#x20;   T --> U*
+T --> U
 
-*&#x20;   U --> W["COMMIT"]*
+U --> W["COMMIT"]
 
-*&#x20;   W --> F*
+W --> F
 
-*&#x20;   B --> X["Falha transitória antes do commit"]*
+B --> X["Falha transitória antes do commit"]
 
-*&#x20;   G --> X*
+G --> X
 
-*&#x20;   L --> X*
+L --> X
 
-*&#x20;   N --> X*
+N --> X
 
-*&#x20;   X --> Y["ROLLBACK da transação SQL"]*
+X --> Y["ROLLBACK da transação SQL"]
 
-*&#x20;   Y --> Z["Não confirmar a mensagem; SQS poderá redeliver"]*
+Y --> Z["Não confirmar a mensagem; SQS poderá redeliver"]
 
-*```*
+```
 
 O diagrama representa o fluxo pretendido. Uma consulta prévia à Inbox ou à chave de idempotência não elimina corridas: duas instâncias podem consultar ao mesmo tempo antes que qualquer uma persista o registro. As chaves únicas no banco e o tratamento dos conflitos precisam fazer parte da implementação. Se a mesma chave de idempotência chegar com payload diferente, isso é conflito, não replay.
 
@@ -287,17 +273,11 @@ O *`ACK`* só deve ocorrer depois do commit. Se o commit acontecer, mas o proces
 É essencial distinguir um resultado de negócio válido de uma falha que impediu concluir a transação:
 
 | Situação | Tratamento | Mensagem SQS |
-
 | --- | --- | --- |
-
 | Saldo insuficiente | Persistir *`REJECTED`*, sem alteração de saldo ou lançamento; persistir o evento correspondente na Outbox. | ACK depois do commit. |
-
 | Referência ausente | Persistir *`PENDING_REFERENCE`* e agendar novas tentativas com backoff; o worker de referências fará o reprocessamento. | ACK depois do commit, pois a pendência foi persistida de forma durável. |
-
 | Falha transitória antes de confirmar a transação | Fazer rollback das alterações não confirmadas. | Não enviar ACK; o SQS poderá redeliver a mensagem. |
-
 | Commit realizado, mas o processo cai antes do ACK | O resultado financeiro e a Inbox já estão persistidos. | Uma redelivery deve reconhecer a mensagem concluída e não repetir os efeitos. |
-
 | Falha de publicação de um evento na Outbox | Manter o resultado financeiro confirmado e agendar nova tentativa de publicação. | Não reprocessar a operação financeira só por causa da falha na publicação. |
 
 Uma rejeição por regra de negócio é um resultado terminal válido. Fazer rollback dessa rejeição apagaria o registro que precisamos preservar para auditoria e idempotência. Uma falha técnica antes do commit, por sua vez, exige rollback para impedir que apenas parte das alterações seja confirmada.
@@ -368,7 +348,7 @@ Esta seção registra o desenho arquitetural pretendido; não substitui a valida
 
 ## 5. Estilo arquitetural e regras de dependência
 
-O projeto adota uma abordagem baseada em ****Clean Architecture**** e ****Ports and Adapters (Arquitetura Hexagonal)****, com um modelo de domínio inspirado em ****Domain-Driven Design (DDD)**** e organização em ****Modular Monolith****.
+O projeto adota uma abordagem baseada em **Clean Architecture** e **Ports and Adapters (Arquitetura Hexagonal)**, com um modelo de domínio inspirado em **Domain-Driven Design (DDD)** e organização em ****Modular Monolith****.
 
 A aplicação permanece como um único sistema implantável, organizado por módulos e responsabilidades. A separação de camadas busca manter as regras de negócio independentes dos detalhes de transporte, persistência e infraestrutura.
 
